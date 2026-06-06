@@ -281,7 +281,7 @@ def release_direction_rule(title: str, category: str = ""):
         return -1.0, "A higher-rate or more hawkish surprise is usually bearish for equities."
     if any(k in text for k in ("unemployment", "jobless", "claims", "layoffs")):
         return -0.35, "Higher unemployment/claims are mixed: dovish for rates, but bearish if growth fear dominates."
-    if any(k in text for k in ("non farm", "nonfarm", "payroll", "employment change", "employment report")):
+    if any(k in text for k in ("non farm", "nonfarm", "payroll", "employment change", "employment report", "adp", "national employment", "jolts", "job openings")):
         return -0.6, "Stronger jobs can pressure rate-sensitive stocks if the market reads it as higher-for-longer Fed policy."
     if any(k in text for k in ("pmi", "ism", "gdp", "retail sales", "industrial production", "consumer confidence")):
         return 0.7, "Stronger growth data is usually risk-on unless it also renews inflation or Fed pressure."
@@ -440,6 +440,7 @@ def score_macro_release(row):
 
 
 def classify_catalyst(title: str, note: str = ""):
+    title_text = str(title or "").lower()
     text = f"{title} {note}".lower()
     profile = {
         "category": "other",
@@ -477,19 +478,19 @@ def classify_catalyst(title: str, note: str = ""):
             "volatility_score": 0.9,
             "expected_effect": "Inflation surprise catalyst. Hotter data is usually bearish for NQ through yields; cooler data is usually bullish. Watch the first move for reversals.",
         })
-    elif "employment" in text or "payroll" in text or "unemployment" in text:
-        profile.update({
-            "category": "labor",
-            "importance": "high",
-            "volatility_score": 0.8,
-            "expected_effect": "Labor surprise catalyst. Strong jobs can pressure NQ through higher yields; weaker jobs can support rate-cut hopes unless recession fear dominates.",
-        })
-    elif "ism" in text or "pmi" in text:
+    elif "ism" in title_text or "pmi" in title_text:
         profile.update({
             "category": "growth",
             "importance": "medium",
             "volatility_score": 0.55,
             "expected_effect": "Growth catalyst. Strong PMI supports risk if inflation is calm; weak PMI can pressure growth names unless it strengthens rate-cut expectations.",
+        })
+    elif any(k in title_text for k in ("employment", "payroll", "unemployment", "jobless", "claims", "jolts", "job openings", "adp")):
+        profile.update({
+            "category": "labor",
+            "importance": "high",
+            "volatility_score": 0.8,
+            "expected_effect": "Labor surprise catalyst. Strong jobs can pressure NQ through higher yields; weaker jobs can support rate-cut hopes unless recession fear dominates.",
         })
     elif "earnings" in text:
         profile.update({

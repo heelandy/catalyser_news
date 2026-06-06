@@ -32,7 +32,18 @@ python .\fetch_nq_yahoo.py --preset intraday
 That creates:
 
 - `NQ_1min_data.csv` using Yahoo's 7-day 1-minute window.
-- `NQ_5min_data.csv` using a 30-day 5-minute window.
+- `NQ_5min_data.csv` using a 60-day 5-minute window when Yahoo allows it.
+
+For a broader Yahoo pull:
+
+```powershell
+python .\fetch_nq_yahoo.py --preset intraday-deep
+```
+
+That adds:
+
+- `NQ_15min_data.csv`
+- `NQ_60min_data.csv`
 
 Use custom ticker, interval, period, or date ranges when you want a different
 timeframe:
@@ -55,13 +66,14 @@ Fetch historical U.S. TradingView economic-calendar rows and align them to NQ
 bars:
 
 ```powershell
-python .\macro_reaction_study.py --fetch-tv-events --start-date 2026-05-01 --end-date 2026-06-05 --market-data .\NQ_5min_data.csv --symbol NQ --tv-min-importance 1 --fetched-events-output macro_events_history_2026_05_06.csv --reaction-output macro_reactions_5m.csv --profile-output macro_reaction_profiles_5m.csv --min-events 1
+python .\macro_reaction_study.py --fetch-tv-events --start-date 2026-03-26 --end-date 2026-06-05 --market-data .\NQ_5min_data.csv --symbol NQ --tv-min-importance 1 --fetched-events-output macro_events_history_2026_03_26_06_05.csv --cluster-output macro_event_clusters_5m_60d.csv --reaction-output macro_reactions_5m.csv --profile-output macro_reaction_profiles_5m.csv --min-events 1
 ```
 
 Outputs:
 
-- `macro_events_history_2026_05_06.csv`: fetched macro events.
-- `macro_reactions_5m.csv`: each event matched to price reaction windows.
+- `macro_events_history_2026_03_26_06_05.csv`: fetched macro events.
+- `macro_event_clusters_5m_60d.csv`: same-timestamp release clusters.
+- `macro_reactions_5m.csv`: each release moment matched to price reaction windows.
 - `macro_reaction_profiles_5m.csv`: learned probabilities by catalyst family
   and surprise side.
 
@@ -74,6 +86,16 @@ The reaction learner keeps two separate surprise interpretations:
 
 New profile groups prefer `event_family_market_bias` and
 `category_market_bias`, then fall back to the older raw-surprise groups.
+
+Profiles use Bayesian smoothing by default, so small samples no longer report
+overconfident raw probabilities. Both raw and smoothed columns are kept:
+
+- `raw_bullish_probability`
+- `bullish_probability`
+- `raw_market_move_probability`
+- `market_move_probability`
+- `sample_confidence`
+- `confidence_label`
 
 For stronger probabilities, expand the history window and use more observations:
 
@@ -107,7 +129,7 @@ python .\catalyser_news.py --calendar --tv-calendar --watch-releases --run-forev
 Calibrate live releases with learned reaction profiles:
 
 ```powershell
-python .\macro_reaction_study.py --calibrate-live macro_releases.csv --profiles macro_reaction_profiles_5m.csv --calibrated-output macro_releases_calibrated.csv
+python .\macro_reaction_study.py --calibrate-live macro_releases.csv --profiles macro_reaction_profiles_5m.csv --calibrated-output macro_releases_calibrated.csv --live-signal-output macro_live_signal.csv
 ```
 
 Calibrated output includes the live rule fields:
@@ -119,6 +141,20 @@ Calibrated output includes the live rule fields:
 - `market_rule_direction`
 - `market_rule_confidence`
 - `market_rule_note`
+
+The compact UI contract is `macro_live_signal.csv`. It includes:
+
+- `release_time`
+- `title`
+- `actual`, `forecast`, `previous`
+- `surprise`
+- `market_bias_side`
+- `historical_sample_size`
+- `historical_bullish_probability`
+- `calibrated_bullish_probability`
+- `expected_direction`
+- `confidence`
+- `warning`
 
 ## 4. Validate Trades
 
@@ -169,9 +205,13 @@ should stay local unless you intentionally want them in a public repository.
 As of the latest local run:
 
 - `NQ_1min_data.csv`: 7,860 rows from 2026-05-29 04:09 to 2026-06-05 20:59.
-- `NQ_5min_data.csv`: 6,652 rows from 2026-05-01 04:05 to 2026-06-05 20:55.
-- `macro_reaction_study.py` matched 27 TradingView U.S. macro events to NQ
-  5-minute bars and produced 36 reaction-profile rows.
+- `NQ_5min_data.csv`: 13,552 rows from 2026-03-26 04:05 to 2026-06-05 20:55.
+- `NQ_15min_data.csv`: 4,537 rows from 2026-03-26 04:00 to 2026-06-05 20:45.
+- `NQ_60min_data.csv`: 13,680 rows from 2024-01-12 05:00 to 2026-06-05 20:00.
+- Yahoo rejected 30 days of 1-minute NQ data and reported that only about 8
+  days of 1m granularity are available per request.
+- `macro_reaction_study.py` clustered 51 TradingView U.S. macro event rows into
+  37 release moments and produced smoothed 5-minute reaction profiles.
 
 ## GitHub Upload Checklist
 

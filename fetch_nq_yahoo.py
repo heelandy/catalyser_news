@@ -10,13 +10,15 @@ studies, use the intraday preset or pass a dynamic interval/period.
 Examples:
   python fetch_nq_yahoo.py
   python fetch_nq_yahoo.py --preset intraday
+  python fetch_nq_yahoo.py --preset intraday-deep
   python fetch_nq_yahoo.py --ticker NQ=F --interval 15m --period 60d --out-csv NQ_15min_data.csv
   python fetch_nq_yahoo.py --ticker ES=F --interval 5m --period 30d --out-csv ES_5min_data.csv
 
 CAVEATS:
   * NQ=F is Yahoo's continuous front-month futures stitch.
   * Yahoo limits intraday history. Common caps are about 7 days for 1m and
-    about 60 days for 2m/5m/15m/30m/60m, though availability can vary.
+    about 60 days for 2m/5m/15m/30m. 60m/1h may reach farther, though
+    availability can vary.
 """
 from __future__ import annotations
 
@@ -34,12 +36,12 @@ DEFAULT_DAILY_YEARS = 10
 DEFAULT_PERIOD_BY_INTERVAL = {
     "1m": "7d",
     "2m": "60d",
-    "5m": "30d",
+    "5m": "60d",
     "15m": "60d",
     "30m": "60d",
-    "60m": "60d",
+    "60m": "730d",
     "90m": "60d",
-    "1h": "60d",
+    "1h": "730d",
     "1d": "10y",
     "5d": "10y",
     "1wk": "10y",
@@ -77,7 +79,13 @@ def default_output_name(ticker: str, interval: str, period: str | None) -> str:
 
 def intraday_preset_output_name(ticker: str, interval: str) -> str:
     if ticker == DEFAULT_TICKER:
-        label = "1min" if interval == "1m" else "5min"
+        label = {
+            "1m": "1min",
+            "5m": "5min",
+            "15m": "15min",
+            "60m": "60min",
+            "1h": "1h",
+        }.get(interval, interval)
         return f"NQ_{label}_data.csv"
     return f"{safe_ticker_name(ticker)}_{interval}_data.csv"
 
@@ -178,7 +186,15 @@ def build_jobs(args: argparse.Namespace) -> list[DownloadJob]:
     if args.preset == "intraday":
         return [
             DownloadJob(ticker=ticker, interval="1m", period="7d", start_date=None, end_date=None, out_csv=intraday_preset_output_name(ticker, "1m")),
-            DownloadJob(ticker=ticker, interval="5m", period="30d", start_date=None, end_date=None, out_csv=intraday_preset_output_name(ticker, "5m")),
+            DownloadJob(ticker=ticker, interval="5m", period="60d", start_date=None, end_date=None, out_csv=intraday_preset_output_name(ticker, "5m")),
+        ]
+
+    if args.preset == "intraday-deep":
+        return [
+            DownloadJob(ticker=ticker, interval="1m", period="7d", start_date=None, end_date=None, out_csv=intraday_preset_output_name(ticker, "1m")),
+            DownloadJob(ticker=ticker, interval="5m", period="60d", start_date=None, end_date=None, out_csv=intraday_preset_output_name(ticker, "5m")),
+            DownloadJob(ticker=ticker, interval="15m", period="60d", start_date=None, end_date=None, out_csv=intraday_preset_output_name(ticker, "15m")),
+            DownloadJob(ticker=ticker, interval="60m", period="730d", start_date=None, end_date=None, out_csv=intraday_preset_output_name(ticker, "60m")),
         ]
 
     if args.preset == "daily" or not any([args.interval, args.period, args.start_date, args.end_date, args.out_csv, args.out_parquet]):
@@ -223,7 +239,7 @@ def build_jobs(args: argparse.Namespace) -> list[DownloadJob]:
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Download Yahoo OHLC data for NQ/ES/SPY/etc.")
     p.add_argument("--ticker", default=DEFAULT_TICKER, help="Yahoo ticker, e.g. NQ=F, ES=F, SPY")
-    p.add_argument("--preset", choices=["daily", "intraday"], help="daily preserves old output; intraday downloads 1m and 5m NQ files")
+    p.add_argument("--preset", choices=["daily", "intraday", "intraday-deep"], help="daily preserves old output; intraday downloads 1m/5m; intraday-deep adds 15m/60m")
     p.add_argument("--interval", help="Yahoo interval, e.g. 1m, 5m, 15m, 1h, 1d")
     p.add_argument("--period", help="Yahoo period, e.g. 7d, 30d, 60d, 10y")
     p.add_argument("--start-date", help="Explicit start date, YYYY-MM-DD. Alternative to --period.")

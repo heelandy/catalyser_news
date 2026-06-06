@@ -36,6 +36,31 @@ import requests
 DEFAULT_WINDOWS_MINUTES = [5, 15, 30, 60, 390]
 DEFAULT_CALENDAR_URL = "https://www.tradingview.com/economic-calendar/?countries=us"
 
+CATEGORY_PRIORITY = {
+    "central_bank": 100,
+    "inflation": 90,
+    "labor": 80,
+    "growth": 70,
+    "other": 0,
+}
+
+EVENT_FAMILY_PRIORITY = {
+    "fomc_rates": 100,
+    "core_cpi": 96,
+    "cpi": 94,
+    "pce": 90,
+    "ppi": 88,
+    "nonfarm_payrolls": 84,
+    "unemployment_rate": 82,
+    "jobless_claims": 78,
+    "labor": 76,
+    "ism_pmi": 72,
+    "gdp": 68,
+    "retail_sales": 62,
+    "home_sales": 56,
+    "other": 0,
+}
+
 
 def parse_dt(value) -> datetime:
     if isinstance(value, datetime):
@@ -189,7 +214,7 @@ def release_direction_rule(title: str, category: str = "") -> tuple[float, str, 
         return -1.0, "higher_is_bearish", "Higher inflation is usually bearish for NQ because it can lift yields and reduce rate-cut odds."
     if any(k in text for k in ("fomc", "interest rate", "fed funds", "rate decision", "dot plot")):
         return -1.0, "higher_is_bearish", "Higher rates or hawkish guidance are usually bearish for rate-sensitive equities."
-    if any(k in text for k in ("non farm", "nonfarm", "payroll", "employment change", "employment report")):
+    if any(k in text for k in ("non farm", "nonfarm", "payroll", "employment change", "employment report", "adp", "national employment", "jolts", "job openings")):
         return -0.6, "higher_is_mixed_bearish", "Stronger payrolls can pressure NQ when the market reads them as higher-for-longer Fed policy."
     if any(k in text for k in ("unemployment", "jobless", "claims", "layoffs")):
         return -0.35, "higher_is_mixed_bearish", "Higher unemployment or claims are mixed: dovish for rates, but bearish if growth fear dominates."
@@ -302,6 +327,141 @@ def normalize_event_row(row: dict) -> dict:
         "surprise_side": market_bias["raw_surprise_side"],
         **market_bias,
     }
+
+
+def unique_join(values, sep: str = " | ") -> str:
+    seen = []
+    for value in values:
+        value = clean_empty(value)
+        if value is None:
+            continue
+        text = str(value)
+        if text not in seen:
+            seen.append(text)
+    return sep.join(seen)
+
+
+def side_from_score(score, neutral_band: float = 0.15) -> tuple[str, str]:
+    if score is None or pd.isna(score):
+        return "market_unknown", "mixed"
+    if abs(float(score)) <= neutral_band:
+        return "market_neutral", "neutral"
+    if float(score) > 0:
+        return "market_positive", "bullish"
+    return "market_negative", "bearish"
+
+
+def mixed_side(values, flat_label: str = "flat", mixed_label: str = "mixed") -> str:
+    sides = {str(v) for v in values if clean_empty(v) is not None}
+    sides.discard("")
+    if not sides:
+        return flat_label
+    if len(sides) == 1:
+        return next(iter(sides))
+    non_flat = {s for s in sides if s != flat_label}
+    if len(non_flat) == 1:
+        return next(iter(non_flat))
+    return mixed_label
+
+
+def event_priority(row: pd.Series) -> tuple[float, float, float]:
+    family = str(row.get("event_family") or "")
+    category = str(row.get("catalyst_category") or "")
+    confidence = parse_economic_value(row.get("market_rule_confidence")) or 0.0
+    return (
+        EVENT_FAMILY_PRIORITY.get(family, 0),
+        CATEGORY_PRIORITY.get(category, 0),
+        confidence,
+    )
+
+
+def cluster_market_bias(group: pd.DataFrame) -> dict:
+    scores = pd.to_numeric(group["market_bias_score"], errors="coerce") if "market_bias_score" in group.columns else pd.Series(dtype=float)
+    confidence = pd.to_numeric(group["market_rule_confidence"], errors="coerce").fillna(0.0) if "market_rule_confidence" in group.columns else pd.Series(0.0, index=group.index)
+    valid = scores.dropna()
+    if valid.empty:
+        score = np.nan
+    else:
+        weights = confidence.loc[valid.index]
+        if float(weights.sum()) > 0:
+            score = float((valid * weights).sum() / weights.sum())
+        else:
+            score = float(valid.mean())
+
+    side, label = side_from_score(score)
+    observed_sides = {str(v) for v in group["market_bias_side"] if clean_empty(v) is not None} if "market_bias_side" in group.columns else set()
+    has_positive = "market_positive" in observed_sides
+    has_negative = "market_negative" in observed_sides
+    if has_positive and has_negative and abs(score) <= 0.35:
+        side = "market_mixed"
+        label = "mixed"
+
+    return {
+        "market_bias_side": side,
+        "market_bias_label": label,
+        "market_bias_score": score,
+        "market_rule_direction": "cluster_weighted",
+        "market_rule_confidence": float(confidence.max()) if len(confidence) else 0.0,
+        "market_rule_note": "Cluster-level market bias from simultaneous releases.",
+    }
+
+
+def cluster_surprise_summary(group: pd.DataFrame) -> str:
+    parts = []
+    for row in group.itertuples(index=False):
+        title = getattr(row, "title", "")
+        surprise = getattr(row, "surprise", "")
+        basis = getattr(row, "surprise_basis", "")
+        if clean_empty(surprise) is None:
+            continue
+        parts.append(f"{title}: {surprise} ({basis})")
+    return " | ".join(parts)
+
+
+def cluster_events(events: pd.DataFrame) -> pd.DataFrame:
+    if events.empty:
+        return events.copy()
+
+    working = events.copy()
+    working["release_time"] = pd.to_datetime(working["release_time"], errors="coerce")
+    working = working.dropna(subset=["release_time"]).sort_values(["release_time", "title"]).reset_index(drop=True)
+    rows = []
+
+    for release_time, group in working.groupby("release_time", sort=True):
+        group = group.reset_index(drop=True)
+        priorities = group.apply(event_priority, axis=1)
+        primary_idx = sorted(range(len(group)), key=lambda i: priorities.iloc[i], reverse=True)[0]
+        primary = group.iloc[primary_idx].to_dict()
+        bias = cluster_market_bias(group)
+        event_count = int(len(group))
+        cluster_id = pd.Timestamp(release_time).strftime("%Y%m%dT%H%M%S")
+
+        row = dict(primary)
+        row.update(
+            {
+                "event_cluster_id": cluster_id,
+                "event_count": event_count,
+                "is_event_cluster": event_count > 1,
+                "cluster_titles": unique_join(group["title"]),
+                "cluster_event_families": unique_join(group["event_family"], sep=","),
+                "cluster_categories": unique_join(group["catalyst_category"], sep=","),
+                "cluster_surprise_sides": unique_join(group["surprise_side"], sep=","),
+                "cluster_market_bias_sides": unique_join(group["market_bias_side"], sep=","),
+                "cluster_surprise_summary": cluster_surprise_summary(group),
+                "primary_title": primary.get("title", ""),
+                "primary_event_family": primary.get("event_family", ""),
+                "primary_catalyst_category": primary.get("catalyst_category", ""),
+                "title": unique_join(group["title"]),
+                "event_family": primary.get("event_family", ""),
+                "catalyst_category": primary.get("catalyst_category", ""),
+                "surprise_side": mixed_side(group["surprise_side"], flat_label="flat", mixed_label="mixed"),
+                "raw_surprise_side": mixed_side(group["raw_surprise_side"], flat_label="flat", mixed_label="mixed"),
+                **bias,
+            }
+        )
+        rows.append(row)
+
+    return pd.DataFrame(rows).sort_values("release_time").reset_index(drop=True)
 
 
 def fetch_tradingview_events(
@@ -541,7 +701,28 @@ def compute_reactions(
     return compute_daily_reactions(events, bars, symbol)
 
 
-def summarize_group(group: pd.DataFrame, move_threshold_pct: float) -> dict:
+def smoothed_probability(successes: int, trials: int, prior: float = 0.5, strength: float = 4.0) -> float:
+    if trials <= 0:
+        return float(prior)
+    strength = max(float(strength), 0.0)
+    return float((successes + prior * strength) / (trials + strength))
+
+
+def confidence_label(value: float) -> str:
+    if value >= 0.70:
+        return "high"
+    if value >= 0.45:
+        return "medium"
+    return "low"
+
+
+def summarize_group(
+    group: pd.DataFrame,
+    move_threshold_pct: float,
+    probability_prior: float,
+    smoothing_strength: float,
+    move_prior: float,
+) -> dict:
     returns = pd.to_numeric(group["reaction_return_pts"], errors="coerce")
     returns_pct = pd.to_numeric(group["reaction_return_pct"], errors="coerce")
     mfe = pd.to_numeric(group["mfe_pts"], errors="coerce")
@@ -550,14 +731,24 @@ def summarize_group(group: pd.DataFrame, move_threshold_pct: float) -> dict:
     valid = returns.dropna()
     if valid.empty:
         return {}
-    bullish_probability = float((valid > 0).mean())
+    sample_size = int(len(valid))
+    bullish_wins = int((valid > 0).sum())
+    raw_bullish_probability = float(bullish_wins / sample_size)
+    bullish_probability = smoothed_probability(bullish_wins, sample_size, probability_prior, smoothing_strength)
     abs_move = returns_pct.abs().dropna()
-    market_move_probability = float((abs_move >= move_threshold_pct).mean()) if len(abs_move) else np.nan
+    raw_market_move_probability = float((abs_move >= move_threshold_pct).mean()) if len(abs_move) else np.nan
+    move_hits = int((abs_move >= move_threshold_pct).sum()) if len(abs_move) else 0
+    market_move_probability = smoothed_probability(move_hits, len(abs_move), move_prior, smoothing_strength) if len(abs_move) else np.nan
+    sample_confidence = min(1.0, sample_size / max(1.0, smoothing_strength * 3.0))
     return {
-        "sample_size": int(len(valid)),
+        "sample_size": sample_size,
+        "raw_bullish_probability": raw_bullish_probability,
         "bullish_probability": bullish_probability,
         "bearish_probability": 1.0 - bullish_probability,
+        "raw_market_move_probability": raw_market_move_probability,
         "market_move_probability": market_move_probability,
+        "sample_confidence": sample_confidence,
+        "confidence_label": confidence_label(sample_confidence),
         "avg_return_pts": float(valid.mean()),
         "median_return_pts": float(valid.median()),
         "avg_return_pct": float(returns_pct.mean()),
@@ -570,7 +761,14 @@ def summarize_group(group: pd.DataFrame, move_threshold_pct: float) -> dict:
     }
 
 
-def build_profiles(reactions: pd.DataFrame, min_events: int, move_threshold_pct: float) -> pd.DataFrame:
+def build_profiles(
+    reactions: pd.DataFrame,
+    min_events: int,
+    move_threshold_pct: float,
+    probability_prior: float,
+    smoothing_strength: float,
+    move_prior: float,
+) -> pd.DataFrame:
     profile_rows = []
     group_specs = [
         ("event_family_market_bias", ["event_family", "market_bias_side"]),
@@ -584,7 +782,7 @@ def build_profiles(reactions: pd.DataFrame, min_events: int, move_threshold_pct:
         if any(key not in reactions.columns for key in keys):
             continue
         for key_values, group in reactions.groupby(keys, dropna=False):
-            stats = summarize_group(group, move_threshold_pct)
+            stats = summarize_group(group, move_threshold_pct, probability_prior, smoothing_strength, move_prior)
             if not stats or stats["sample_size"] < min_events:
                 continue
             if not isinstance(key_values, tuple):
@@ -609,9 +807,13 @@ def build_profiles(reactions: pd.DataFrame, min_events: int, move_threshold_pct:
                 "surprise_side",
                 "market_bias_side",
                 "sample_size",
+                "raw_bullish_probability",
                 "bullish_probability",
                 "bearish_probability",
+                "raw_market_move_probability",
                 "market_move_probability",
+                "sample_confidence",
+                "confidence_label",
                 "avg_return_pts",
                 "median_return_pts",
                 "avg_market_bias_score",
@@ -666,13 +868,110 @@ def find_profile(row: pd.Series, profiles: pd.DataFrame):
     return None
 
 
-def calibrate_live_rows(live_path: str, profiles_path: str, out_path: str) -> None:
+def safe_profile_value(profile: pd.Series, key: str, default=""):
+    return profile[key] if key in profile.index and not pd.isna(profile[key]) else default
+
+
+def probability_from_row(row: pd.Series, key: str, default=0.5) -> float:
+    if key not in row.index:
+        return float(default)
+    value = parse_economic_value(row.get(key))
+    if value is None:
+        return float(default)
+    if value > 1.0 and value <= 100.0:
+        return float(value) / 100.0
+    return float(value)
+
+
+def expected_direction(probability: float, bullish_threshold: float = 0.57, bearish_threshold: float = 0.43) -> str:
+    if probability >= bullish_threshold:
+        return "bullish"
+    if probability <= bearish_threshold:
+        return "bearish"
+    return "mixed"
+
+
+def build_warning(row: pd.Series) -> str:
+    warnings = []
+    sample_size = parse_economic_value(row.get("historical_sample_size"))
+    if sample_size is None:
+        warnings.append("no_historical_profile")
+    elif sample_size < 5:
+        warnings.append("low_sample")
+
+    market_bias_side = str(row.get("market_bias_side") or "")
+    if market_bias_side in {"market_unknown", "market_mixed", ""}:
+        warnings.append("unclear_market_bias")
+
+    calibrated = probability_from_row(row, "calibrated_bullish_probability", probability_from_row(row, "bullish_probability", 0.5))
+    if abs(calibrated - 0.5) < 0.08:
+        warnings.append("weak_direction_edge")
+
+    if str(row.get("release_status") or "") == "waiting_actual":
+        warnings.append("waiting_actual")
+    return ";".join(warnings)
+
+
+def build_live_signal_frame(calibrated: pd.DataFrame) -> pd.DataFrame:
+    rows = []
+    for _, row in calibrated.iterrows():
+        calibrated_bull = probability_from_row(row, "calibrated_bullish_probability", probability_from_row(row, "bullish_probability", 0.5))
+        calibrated_bear = 1.0 - calibrated_bull
+        sample_confidence = probability_from_row(row, "historical_sample_confidence", 0.0)
+        rule_confidence = probability_from_row(row, "market_rule_confidence", 0.0)
+        edge_confidence = min(1.0, abs(calibrated_bull - 0.5) * 2.0)
+        confidence = min(1.0, sample_confidence * 0.50 + rule_confidence * 0.20 + edge_confidence * 0.30)
+
+        rows.append(
+            {
+                "release_time": row.get("release_time", ""),
+                "title": row.get("title", ""),
+                "catalyst_category": row.get("catalyst_category", ""),
+                "event_family": row.get("event_family", ""),
+                "release_status": row.get("release_status", ""),
+                "previous": row.get("previous", ""),
+                "forecast": row.get("forecast", ""),
+                "actual": row.get("actual", ""),
+                "previous_value": row.get("previous_value", ""),
+                "forecast_value": row.get("forecast_value", ""),
+                "actual_value": row.get("actual_value", ""),
+                "surprise": row.get("surprise", ""),
+                "surprise_basis": row.get("surprise_basis", ""),
+                "raw_surprise_side": row.get("raw_surprise_side", row.get("surprise_side", "")),
+                "market_bias_side": row.get("market_bias_side", ""),
+                "market_bias_label": row.get("market_bias_label", ""),
+                "market_bias_score": row.get("market_bias_score", ""),
+                "market_rule_direction": row.get("market_rule_direction", ""),
+                "market_rule_confidence": row.get("market_rule_confidence", ""),
+                "historical_group_type": row.get("historical_group_type", ""),
+                "historical_sample_size": row.get("historical_sample_size", ""),
+                "historical_confidence_label": row.get("historical_confidence_label", ""),
+                "historical_bullish_probability": row.get("historical_bullish_probability", ""),
+                "historical_raw_bullish_probability": row.get("historical_raw_bullish_probability", ""),
+                "historical_market_move_probability": row.get("historical_market_move_probability", ""),
+                "historical_avg_return_pts": row.get("historical_avg_return_pts", ""),
+                "calibrated_bullish_probability": calibrated_bull,
+                "calibrated_bearish_probability": calibrated_bear,
+                "expected_direction": expected_direction(calibrated_bull),
+                "confidence": confidence,
+                "confidence_label": confidence_label(confidence),
+                "warning": build_warning(row),
+                "market_rule_note": row.get("market_rule_note", ""),
+                "source": row.get("source", ""),
+                "source_url": row.get("source_url", ""),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def calibrate_live_rows(live_path: str, profiles_path: str, out_path: str, signal_output: str | None = None) -> None:
     raw = pd.read_csv(live_path)
     normalized = pd.DataFrame([normalize_event_row(r) for r in raw.to_dict("records")])
     profiles = pd.read_csv(profiles_path)
-    out = raw.copy()
+    out = pd.DataFrame(raw.to_dict("records"), dtype=object)
 
     normalized_cols = [
+        "event_family",
         "raw_surprise_side",
         "market_bias_side",
         "market_bias_label",
@@ -685,9 +984,13 @@ def calibrate_live_rows(live_path: str, profiles_path: str, out_path: str) -> No
         "historical_group_type",
         "historical_sample_size",
         "historical_market_bias_side",
+        "historical_raw_bullish_probability",
         "historical_bullish_probability",
         "historical_bearish_probability",
+        "historical_raw_market_move_probability",
         "historical_market_move_probability",
+        "historical_sample_confidence",
+        "historical_confidence_label",
         "historical_avg_return_pts",
         "historical_avg_mfe_pts",
         "historical_avg_mae_pts",
@@ -695,7 +998,7 @@ def calibrate_live_rows(live_path: str, profiles_path: str, out_path: str) -> No
         "calibrated_bearish_probability",
     ]
     for col in normalized_cols + hist_cols:
-        out[col] = ""
+        out[col] = pd.Series([""] * len(out), dtype=object)
 
     for idx, row in normalized.iterrows():
         for col in normalized_cols:
@@ -716,10 +1019,14 @@ def calibrate_live_rows(live_path: str, profiles_path: str, out_path: str) -> No
 
         out.loc[idx, "historical_group_type"] = profile["group_type"]
         out.loc[idx, "historical_sample_size"] = sample_size
-        out.loc[idx, "historical_market_bias_side"] = profile["market_bias_side"] if "market_bias_side" in profile.index else ""
+        out.loc[idx, "historical_market_bias_side"] = safe_profile_value(profile, "market_bias_side")
+        out.loc[idx, "historical_raw_bullish_probability"] = safe_profile_value(profile, "raw_bullish_probability")
         out.loc[idx, "historical_bullish_probability"] = hist_bull
         out.loc[idx, "historical_bearish_probability"] = float(profile["bearish_probability"])
+        out.loc[idx, "historical_raw_market_move_probability"] = safe_profile_value(profile, "raw_market_move_probability")
         out.loc[idx, "historical_market_move_probability"] = float(profile["market_move_probability"])
+        out.loc[idx, "historical_sample_confidence"] = safe_profile_value(profile, "sample_confidence")
+        out.loc[idx, "historical_confidence_label"] = safe_profile_value(profile, "confidence_label")
         out.loc[idx, "historical_avg_return_pts"] = float(profile["avg_return_pts"])
         out.loc[idx, "historical_avg_mfe_pts"] = float(profile["avg_mfe_pts"])
         out.loc[idx, "historical_avg_mae_pts"] = float(profile["avg_mae_pts"])
@@ -728,6 +1035,10 @@ def calibrate_live_rows(live_path: str, profiles_path: str, out_path: str) -> No
 
     out.to_csv(out_path, index=False)
     print(f"Wrote calibrated live releases to {out_path}")
+    if signal_output:
+        signal = build_live_signal_frame(out)
+        signal.to_csv(signal_output, index=False)
+        print(f"Wrote live signal contract to {signal_output}")
 
 
 def parse_windows(value: str) -> list[int]:
@@ -744,17 +1055,23 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--tv-min-importance", type=int, default=1, help="TradingView importance: -1 low, 0 medium, 1 high")
     p.add_argument("--tv-chunk-days", type=int, default=30, help="Days per TradingView historical request chunk")
     p.add_argument("--fetched-events-output", default="macro_events_history.csv", help="Where to save fetched event history")
+    p.add_argument("--no-cluster-events", action="store_true", help="Disable same-timestamp event clustering")
+    p.add_argument("--cluster-output", default="macro_event_clusters.csv", help="Where to save same-timestamp event clusters")
     p.add_argument("--market-data", help="Market OHLC CSV/Parquet, daily or intraday")
     p.add_argument("--symbol", default="NQ", help="Symbol label for reaction output")
     p.add_argument("--windows-minutes", default=",".join(map(str, DEFAULT_WINDOWS_MINUTES)), help="Intraday reaction windows")
     p.add_argument("--primary-window-minutes", type=int, default=60, help="Primary intraday window used for profiles")
     p.add_argument("--move-threshold-pct", type=float, default=0.25, help="Abs return percent threshold for market_move_probability")
+    p.add_argument("--probability-prior", type=float, default=0.5, help="Bayesian prior for bullish probability smoothing")
+    p.add_argument("--move-prior", type=float, default=0.25, help="Bayesian prior for market-move probability smoothing")
+    p.add_argument("--smoothing-strength", type=float, default=4.0, help="Prior sample strength for probability smoothing")
     p.add_argument("--min-events", type=int, default=3, help="Minimum events required for a profile row")
     p.add_argument("--reaction-output", default="macro_reactions.csv")
     p.add_argument("--profile-output", default="macro_reaction_profiles.csv")
     p.add_argument("--calibrate-live", help="Live macro_releases.csv to calibrate using --profiles")
     p.add_argument("--profiles", help="Reaction profile CSV created by this module")
     p.add_argument("--calibrated-output", default="macro_releases_calibrated.csv")
+    p.add_argument("--live-signal-output", help="Optional compact UI-ready live signal CSV")
     return p.parse_args()
 
 
@@ -764,7 +1081,7 @@ def main() -> None:
     if args.calibrate_live:
         if not args.profiles:
             raise SystemExit("--calibrate-live requires --profiles")
-        calibrate_live_rows(args.calibrate_live, args.profiles, args.calibrated_output)
+        calibrate_live_rows(args.calibrate_live, args.profiles, args.calibrated_output, signal_output=args.live_signal_output)
         return
 
     if args.fetch_tv_events:
@@ -785,6 +1102,12 @@ def main() -> None:
     else:
         raise SystemExit("Provide --events-file or --fetch-tv-events.")
 
+    if not args.no_cluster_events:
+        raw_count = len(events)
+        events = cluster_events(events)
+        events.to_csv(args.cluster_output, index=False)
+        print(f"Clustered {raw_count} event rows into {len(events)} release moments. Wrote {args.cluster_output}.")
+
     if not args.market_data:
         raise SystemExit("Provide --market-data.")
 
@@ -794,12 +1117,19 @@ def main() -> None:
     reactions.to_csv(args.reaction_output, index=False)
     print(f"Wrote {len(reactions)} event reaction rows to {args.reaction_output}.")
 
-    profiles = build_profiles(reactions, args.min_events, args.move_threshold_pct)
+    profiles = build_profiles(
+        reactions,
+        args.min_events,
+        args.move_threshold_pct,
+        args.probability_prior,
+        args.smoothing_strength,
+        args.move_prior,
+    )
     profiles.to_csv(args.profile_output, index=False)
     print(f"Wrote {len(profiles)} reaction profile rows to {args.profile_output}.")
 
     if not profiles.empty:
-        cols = ["group_type", "event_family", "catalyst_category", "surprise_side", "market_bias_side", "sample_size", "bullish_probability", "avg_return_pts", "market_move_probability"]
+        cols = ["group_type", "event_family", "catalyst_category", "surprise_side", "market_bias_side", "sample_size", "raw_bullish_probability", "bullish_probability", "confidence_label", "avg_return_pts", "market_move_probability"]
         print("\nTop profiles:")
         print(profiles[cols].head(12).to_string(index=False))
 
