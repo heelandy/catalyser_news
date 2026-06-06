@@ -288,6 +288,56 @@ def release_direction_rule(title: str, category: str = ""):
     return 0.0, "No reliable one-number direction rule; treat this as a volatility catalyst and wait for price confirmation."
 
 
+def market_rule_direction(multiplier):
+    if multiplier > 0:
+        return 'higher_is_bullish'
+    if multiplier < 0 and abs(multiplier) >= 0.75:
+        return 'higher_is_bearish'
+    if multiplier < 0:
+        return 'higher_is_mixed_bearish'
+    return 'unknown'
+
+
+def surprise_side(value, eps=1e-12):
+    value = parse_economic_value(value)
+    if value is None or abs(value) <= eps:
+        return 'flat'
+    return 'positive' if value > 0 else 'negative'
+
+
+def interpret_market_bias(title, category, surprise):
+    raw_side = surprise_side(surprise)
+    multiplier, note = release_direction_rule(title, category)
+    sign = 1 if raw_side == 'positive' else -1 if raw_side == 'negative' else 0
+    score = multiplier * sign
+
+    if sign == 0:
+        side = 'market_neutral'
+        label = 'neutral'
+    elif abs(multiplier) < 0.2:
+        side = 'market_unknown'
+        label = 'mixed'
+    elif score > 0:
+        side = 'market_positive'
+        label = 'bullish'
+    elif score < 0:
+        side = 'market_negative'
+        label = 'bearish'
+    else:
+        side = 'market_unknown'
+        label = 'mixed'
+
+    return {
+        'raw_surprise_side': raw_side,
+        'market_bias_side': side,
+        'market_bias_label': label,
+        'market_bias_score': score,
+        'market_rule_direction': market_rule_direction(multiplier),
+        'market_rule_confidence': abs(multiplier),
+        'market_rule_note': note,
+    }
+
+
 def surprise_scale(title: str, category: str, unit: str, baseline):
     text = f"{title} {category}".lower()
     unit = (unit or "").strip()
@@ -348,8 +398,8 @@ def score_macro_release(row):
 
     scale = surprise_scale(title, category, unit, baseline)
     surprise_magnitude = min(abs(surprise) / scale, 1.0) if surprise is not None and scale else 0.0
-    higher_direction, rule_note = release_direction_rule(title, category)
-    direction_score = higher_direction * (1 if (surprise or 0) > 0 else -1 if (surprise or 0) < 0 else 0) * surprise_magnitude * confidence
+    market_bias = interpret_market_bias(title, category, surprise)
+    direction_score = market_bias['market_bias_score'] * surprise_magnitude * confidence
 
     base_move = {'closed': 0.0, 'low': 0.25, 'medium': 0.45, 'high': 0.65}.get(str(profile['importance']).lower(), 0.35)
     base_move = max(base_move, min(importance_num / 3.0, 1.0) * 0.65)
@@ -365,7 +415,8 @@ def score_macro_release(row):
         direction_label = 'mixed'
 
     expected_effect = (
-        f"{status}; {surprise_basis}. {rule_note} "
+        f"{status}; {surprise_basis}. {market_bias['market_rule_note']} "
+        f"Market bias: {market_bias['market_bias_side']}. "
         f"Bullish probability {bullish_probability:.0%}, bearish probability {bearish_probability:.0%}, "
         f"market-move probability {market_move_probability:.0%}."
     )
@@ -379,6 +430,7 @@ def score_macro_release(row):
         'surprise_magnitude': surprise_magnitude,
         'direction_score': direction_score,
         'direction_label': direction_label,
+        **market_bias,
         'bullish_probability': bullish_probability,
         'bearish_probability': bearish_probability,
         'market_move_probability': market_move_probability,
@@ -562,6 +614,13 @@ def build_catalyst_rows(events, as_of=None, lookback_days=2, lookahead_days=14, 
             'actual_value': score['actual_value'],
             'surprise': score['surprise'],
             'surprise_basis': score['surprise_basis'],
+            'raw_surprise_side': score['raw_surprise_side'] if has_release_values else '',
+            'market_bias_side': score['market_bias_side'] if has_release_values else '',
+            'market_bias_label': score['market_bias_label'] if has_release_values else '',
+            'market_bias_score': score['market_bias_score'] if has_release_values else '',
+            'market_rule_direction': score['market_rule_direction'] if has_release_values else '',
+            'market_rule_confidence': score['market_rule_confidence'] if has_release_values else '',
+            'market_rule_note': score['market_rule_note'] if has_release_values else '',
             'direction_label': score['direction_label'] if has_release_values else 'scheduled',
             'bullish_probability': score['bullish_probability'] if has_release_values else '',
             'bearish_probability': score['bearish_probability'] if has_release_values else '',
@@ -772,6 +831,13 @@ def normalize_tradingview_events(events, symbols=None):
             'actual_value': score['actual_value'],
             'surprise': score['surprise'],
             'surprise_basis': score['surprise_basis'],
+            'raw_surprise_side': score['raw_surprise_side'],
+            'market_bias_side': score['market_bias_side'],
+            'market_bias_label': score['market_bias_label'],
+            'market_bias_score': score['market_bias_score'],
+            'market_rule_direction': score['market_rule_direction'],
+            'market_rule_confidence': score['market_rule_confidence'],
+            'market_rule_note': score['market_rule_note'],
             'direction_label': score['direction_label'],
             'bullish_probability': score['bullish_probability'],
             'bearish_probability': score['bearish_probability'],
@@ -906,6 +972,13 @@ def normalize_tradingeconomics_events(events, symbols=None, min_importance=2):
             'actual_value': score['actual_value'],
             'surprise': score['surprise'],
             'surprise_basis': score['surprise_basis'],
+            'raw_surprise_side': score['raw_surprise_side'],
+            'market_bias_side': score['market_bias_side'],
+            'market_bias_label': score['market_bias_label'],
+            'market_bias_score': score['market_bias_score'],
+            'market_rule_direction': score['market_rule_direction'],
+            'market_rule_confidence': score['market_rule_confidence'],
+            'market_rule_note': score['market_rule_note'],
             'direction_label': score['direction_label'],
             'bullish_probability': score['bullish_probability'],
             'bearish_probability': score['bearish_probability'],
@@ -1049,7 +1122,9 @@ def write_catalyst_csv(path, rows):
         'start_date','end_date','release_time','title','catalyst_category','importance','importance_raw',
         'country','category','reference','calendar_id','unit','scale',
         'release_status','previous','forecast','actual','previous_value','forecast_value','actual_value',
-        'surprise','surprise_basis','direction_label','bullish_probability','bearish_probability',
+        'surprise','surprise_basis','raw_surprise_side','market_bias_side','market_bias_label',
+        'market_bias_score','market_rule_direction','market_rule_confidence','market_rule_note',
+        'direction_label','bullish_probability','bearish_probability',
         'market_move_probability','direction_score','volatility_score','days_from_as_of','symbols',
         'source','source_url','expected_effect'
     ]

@@ -8,6 +8,11 @@ env/
 .env
 .env.*
 *.log
+*_github_upload.zip
+
+# One-off local verification outputs.
+catalysts_market_bias_test.csv
+market_bias_summary_test.csv
 
 # Local/private broker exports and account journals.
 Orders.csv

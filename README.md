@@ -65,6 +65,16 @@ Outputs:
 - `macro_reaction_profiles_5m.csv`: learned probabilities by catalyst family
   and surprise side.
 
+The reaction learner keeps two separate surprise interpretations:
+
+- `surprise_side`: the raw number direction, such as actual above forecast.
+- `market_bias_side`: the market-adjusted interpretation, such as hotter CPI
+  becoming `market_negative` for NQ while stronger PMI can become
+  `market_positive`.
+
+New profile groups prefer `event_family_market_bias` and
+`category_market_bias`, then fall back to the older raw-surprise groups.
+
 For stronger probabilities, expand the history window and use more observations:
 
 ```powershell
@@ -99,6 +109,16 @@ Calibrate live releases with learned reaction profiles:
 ```powershell
 python .\macro_reaction_study.py --calibrate-live macro_releases.csv --profiles macro_reaction_profiles_5m.csv --calibrated-output macro_releases_calibrated.csv
 ```
+
+Calibrated output includes the live rule fields:
+
+- `raw_surprise_side`
+- `market_bias_side`
+- `market_bias_label`
+- `market_bias_score`
+- `market_rule_direction`
+- `market_rule_confidence`
+- `market_rule_note`
 
 ## 4. Validate Trades
 

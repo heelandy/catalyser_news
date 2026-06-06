@@ -182,6 +182,55 @@ def surprise_side(value, eps=1e-12) -> str:
     return "positive" if value > 0 else "negative"
 
 
+def release_direction_rule(title: str, category: str = "") -> tuple[float, str, str]:
+    text = f"{title} {category}".lower()
+
+    if any(k in text for k in ("cpi", "ppi", "pce", "inflation", "prices", "price index")):
+        return -1.0, "higher_is_bearish", "Higher inflation is usually bearish for NQ because it can lift yields and reduce rate-cut odds."
+    if any(k in text for k in ("fomc", "interest rate", "fed funds", "rate decision", "dot plot")):
+        return -1.0, "higher_is_bearish", "Higher rates or hawkish guidance are usually bearish for rate-sensitive equities."
+    if any(k in text for k in ("non farm", "nonfarm", "payroll", "employment change", "employment report")):
+        return -0.6, "higher_is_mixed_bearish", "Stronger payrolls can pressure NQ when the market reads them as higher-for-longer Fed policy."
+    if any(k in text for k in ("unemployment", "jobless", "claims", "layoffs")):
+        return -0.35, "higher_is_mixed_bearish", "Higher unemployment or claims are mixed: dovish for rates, but bearish if growth fear dominates."
+    if any(k in text for k in ("pmi", "ism", "gdp", "retail sales", "industrial production", "consumer confidence", "home sales")):
+        return 0.7, "higher_is_bullish", "Stronger growth data is usually risk-on unless it renews inflation or Fed pressure."
+    return 0.0, "unknown", "No reliable one-number market direction rule; treat as a volatility catalyst."
+
+
+def interpret_market_bias(title: str, category: str, surprise) -> dict:
+    raw_side = surprise_side(surprise)
+    direction, rule, note = release_direction_rule(title, category)
+    sign = 1 if raw_side == "positive" else -1 if raw_side == "negative" else 0
+    score = direction * sign
+
+    if sign == 0:
+        side = "market_neutral"
+        label = "neutral"
+    elif abs(direction) < 0.2:
+        side = "market_unknown"
+        label = "mixed"
+    elif score > 0:
+        side = "market_positive"
+        label = "bullish"
+    elif score < 0:
+        side = "market_negative"
+        label = "bearish"
+    else:
+        side = "market_unknown"
+        label = "mixed"
+
+    return {
+        "raw_surprise_side": raw_side,
+        "market_bias_side": side,
+        "market_bias_label": label,
+        "market_bias_score": score,
+        "market_rule_direction": rule,
+        "market_rule_confidence": abs(direction),
+        "market_rule_note": note,
+    }
+
+
 def first_number(row: dict, keys: list[str]):
     for key in keys:
         if key in row:
@@ -231,6 +280,7 @@ def normalize_event_row(row: dict) -> dict:
 
     family = event_family(title, category)
     catalyst_category = row.get("catalyst_category") or classify_event(title, category)
+    market_bias = interpret_market_bias(title, catalyst_category, surprise)
     return {
         "release_time": parse_dt(release_time),
         "title": title,
@@ -249,7 +299,8 @@ def normalize_event_row(row: dict) -> dict:
         "actual_value": actual_value,
         "surprise": surprise,
         "surprise_basis": surprise_basis,
-        "surprise_side": surprise_side(surprise),
+        "surprise_side": market_bias["raw_surprise_side"],
+        **market_bias,
     }
 
 
@@ -495,6 +546,7 @@ def summarize_group(group: pd.DataFrame, move_threshold_pct: float) -> dict:
     returns_pct = pd.to_numeric(group["reaction_return_pct"], errors="coerce")
     mfe = pd.to_numeric(group["mfe_pts"], errors="coerce")
     mae = pd.to_numeric(group["mae_pts"], errors="coerce")
+    market_bias_score = pd.to_numeric(group["market_bias_score"], errors="coerce") if "market_bias_score" in group.columns else pd.Series(dtype=float)
     valid = returns.dropna()
     if valid.empty:
         return {}
@@ -513,6 +565,7 @@ def summarize_group(group: pd.DataFrame, move_threshold_pct: float) -> dict:
         "avg_mfe_pts": float(mfe.mean()),
         "avg_mae_pts": float(mae.mean()),
         "avg_abs_surprise": float(pd.to_numeric(group["surprise"], errors="coerce").abs().mean()),
+        "avg_market_bias_score": float(market_bias_score.mean()) if len(market_bias_score.dropna()) else np.nan,
         "window_label": group["window_label"].dropna().iloc[0] if group["window_label"].notna().any() else "",
     }
 
@@ -520,12 +573,16 @@ def summarize_group(group: pd.DataFrame, move_threshold_pct: float) -> dict:
 def build_profiles(reactions: pd.DataFrame, min_events: int, move_threshold_pct: float) -> pd.DataFrame:
     profile_rows = []
     group_specs = [
+        ("event_family_market_bias", ["event_family", "market_bias_side"]),
+        ("category_market_bias", ["catalyst_category", "market_bias_side"]),
         ("event_family_side", ["event_family", "surprise_side"]),
         ("category_side", ["catalyst_category", "surprise_side"]),
         ("event_family_all", ["event_family"]),
         ("category_all", ["catalyst_category"]),
     ]
     for group_type, keys in group_specs:
+        if any(key not in reactions.columns for key in keys):
+            continue
         for key_values, group in reactions.groupby(keys, dropna=False):
             stats = summarize_group(group, move_threshold_pct)
             if not stats or stats["sample_size"] < min_events:
@@ -537,34 +594,71 @@ def build_profiles(reactions: pd.DataFrame, min_events: int, move_threshold_pct:
                 "event_family": "",
                 "catalyst_category": "",
                 "surprise_side": "",
+                "market_bias_side": "",
             }
             for key, value in zip(keys, key_values):
                 row[key] = value
             row.update(stats)
             profile_rows.append(row)
+    if not profile_rows:
+        return pd.DataFrame(
+            columns=[
+                "group_type",
+                "event_family",
+                "catalyst_category",
+                "surprise_side",
+                "market_bias_side",
+                "sample_size",
+                "bullish_probability",
+                "bearish_probability",
+                "market_move_probability",
+                "avg_return_pts",
+                "median_return_pts",
+                "avg_market_bias_score",
+                "window_label",
+            ]
+        )
     return pd.DataFrame(profile_rows).sort_values(["group_type", "sample_size"], ascending=[True, False])
+
+
+def get_row_value(row: pd.Series, key: str, default=""):
+    return row[key] if key in row.index else default
+
+
+def profile_candidate(profiles: pd.DataFrame, group_type: str, filters: dict[str, object]) -> pd.DataFrame:
+    required = {"group_type", *filters.keys()}
+    if any(col not in profiles.columns for col in required):
+        return pd.DataFrame()
+    mask = profiles["group_type"] == group_type
+    for key, value in filters.items():
+        mask &= profiles[key] == value
+    return profiles[mask]
 
 
 def find_profile(row: pd.Series, profiles: pd.DataFrame):
     candidates = [
-        profiles[
-            (profiles["group_type"] == "event_family_side")
-            & (profiles["event_family"] == row["event_family"])
-            & (profiles["surprise_side"] == row["surprise_side"])
-        ],
-        profiles[
-            (profiles["group_type"] == "category_side")
-            & (profiles["catalyst_category"] == row["catalyst_category"])
-            & (profiles["surprise_side"] == row["surprise_side"])
-        ],
-        profiles[
-            (profiles["group_type"] == "event_family_all")
-            & (profiles["event_family"] == row["event_family"])
-        ],
-        profiles[
-            (profiles["group_type"] == "category_all")
-            & (profiles["catalyst_category"] == row["catalyst_category"])
-        ],
+        profile_candidate(
+            profiles,
+            "event_family_market_bias",
+            {"event_family": get_row_value(row, "event_family"), "market_bias_side": get_row_value(row, "market_bias_side")},
+        ),
+        profile_candidate(
+            profiles,
+            "category_market_bias",
+            {"catalyst_category": get_row_value(row, "catalyst_category"), "market_bias_side": get_row_value(row, "market_bias_side")},
+        ),
+        profile_candidate(
+            profiles,
+            "event_family_side",
+            {"event_family": get_row_value(row, "event_family"), "surprise_side": get_row_value(row, "surprise_side")},
+        ),
+        profile_candidate(
+            profiles,
+            "category_side",
+            {"catalyst_category": get_row_value(row, "catalyst_category"), "surprise_side": get_row_value(row, "surprise_side")},
+        ),
+        profile_candidate(profiles, "event_family_all", {"event_family": get_row_value(row, "event_family")}),
+        profile_candidate(profiles, "category_all", {"catalyst_category": get_row_value(row, "catalyst_category")}),
     ]
     for candidate in candidates:
         if not candidate.empty:
@@ -578,9 +672,19 @@ def calibrate_live_rows(live_path: str, profiles_path: str, out_path: str) -> No
     profiles = pd.read_csv(profiles_path)
     out = raw.copy()
 
+    normalized_cols = [
+        "raw_surprise_side",
+        "market_bias_side",
+        "market_bias_label",
+        "market_bias_score",
+        "market_rule_direction",
+        "market_rule_confidence",
+        "market_rule_note",
+    ]
     hist_cols = [
         "historical_group_type",
         "historical_sample_size",
+        "historical_market_bias_side",
         "historical_bullish_probability",
         "historical_bearish_probability",
         "historical_market_move_probability",
@@ -590,10 +694,14 @@ def calibrate_live_rows(live_path: str, profiles_path: str, out_path: str) -> No
         "calibrated_bullish_probability",
         "calibrated_bearish_probability",
     ]
-    for col in hist_cols:
+    for col in normalized_cols + hist_cols:
         out[col] = ""
 
     for idx, row in normalized.iterrows():
+        for col in normalized_cols:
+            if col in normalized.columns:
+                out.loc[idx, col] = normalized.loc[idx, col]
+
         profile = find_profile(row, profiles)
         if profile is None:
             continue
@@ -608,6 +716,7 @@ def calibrate_live_rows(live_path: str, profiles_path: str, out_path: str) -> No
 
         out.loc[idx, "historical_group_type"] = profile["group_type"]
         out.loc[idx, "historical_sample_size"] = sample_size
+        out.loc[idx, "historical_market_bias_side"] = profile["market_bias_side"] if "market_bias_side" in profile.index else ""
         out.loc[idx, "historical_bullish_probability"] = hist_bull
         out.loc[idx, "historical_bearish_probability"] = float(profile["bearish_probability"])
         out.loc[idx, "historical_market_move_probability"] = float(profile["market_move_probability"])
@@ -690,7 +799,7 @@ def main() -> None:
     print(f"Wrote {len(profiles)} reaction profile rows to {args.profile_output}.")
 
     if not profiles.empty:
-        cols = ["group_type", "event_family", "catalyst_category", "surprise_side", "sample_size", "bullish_probability", "avg_return_pts", "market_move_probability"]
+        cols = ["group_type", "event_family", "catalyst_category", "surprise_side", "market_bias_side", "sample_size", "bullish_probability", "avg_return_pts", "market_move_probability"]
         print("\nTop profiles:")
         print(profiles[cols].head(12).to_string(index=False))
 
