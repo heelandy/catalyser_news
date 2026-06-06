@@ -1,0 +1,22 @@
+__pycache__/
+*.py[cod]
+
+.venv/
+venv/
+env/
+
+.env
+.env.*
+*.log
+
+# Local/private broker exports and account journals.
+Orders.csv
+Fills.csv
+paper-trading-order-history-*.csv
+paper-trading-trading-journal-*.csv
+paper_real_trades.csv
+
+# Local database/cache outputs.
+*.duckdb
+*.duckdb.wal
+.ipynb_checkpoints/

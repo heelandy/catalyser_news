@@ -1,0 +1,10 @@
+duckdb
+feedparser
+numpy
+pandas
+pyarrow
+requests
+torch
+transformers
+vaderSentiment
+yfinance
