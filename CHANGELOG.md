@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.0 - Dashboard Charts and Timing Notes
+
+- Added dashboard charts for final probability timeline, event-family
+  performance, and trust weights.
+- Added README timing notes for when pre-release and post-actual direction
+  probabilities become available.
+- Expanded local dashboard startup instructions with the workspace-root command.
+
 ## 0.5.0 - Local Dashboard
 
 - Added `dashboard/index.html`, `dashboard/styles.css`, and `dashboard/app.js`.
@@ -81,4 +89,4 @@
 
 - Add richer historical futures data when Yahoo's intraday limits are not enough.
 - Add alerting around runner failures and release-time state changes.
-- Add dashboard charts for event-family performance over time.
+- Add alerting inside the dashboard for newly released actual values.

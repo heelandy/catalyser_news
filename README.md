@@ -242,11 +242,31 @@ The runner writes `macro_pipeline_runner.log` and `macro_pipeline_status.json`
 for monitoring. These local runtime files are not included in the GitHub upload
 allowlist.
 
-## 7. Open The Dashboard
+### When Direction Probability Updates
+
+The system can show a preliminary direction probability before the actual number
+is released when it has a forecast/previous value and matching history. That
+pre-release probability is based on `forecast_vs_previous`.
+
+The stronger signal appears after the actual value is published by the calendar
+source and the pipeline runs:
+
+- `catalyser_news.py` sees the actual value on the next poll.
+- `macro_reaction_study.py` calibrates the release against historical profiles.
+- `macro_signal_trust.py` applies the feedback weights.
+- `macro_live_signal_adjusted.csv` receives the final UI fields.
+
+With `--watch-releases --poll-seconds 15`, expect the local CSV/dashboard to
+update about 15-30 seconds after TradingView exposes the actual number, plus a
+few seconds for processing. If the runner is using `--loop-seconds 60` without
+release polling, the update can take up to the next loop cycle.
+
+## 7. Start The Dashboard Locally
 
 Serve the workspace root and open the dashboard:
 
 ```powershell
+cd "C:\Users\heela\OneDrive\Área de Trabalho\python nq"
 python -m http.server 8787 --bind 127.0.0.1
 ```
 
@@ -266,8 +286,9 @@ The dashboard reads:
 Views:
 
 - Signals: live catalyst table, final probabilities, filters, and detail panel.
-- Performance: accuracy and whipsaw summaries.
-- Trust: feedback weights used by the adjusted signal contract.
+- Performance: accuracy, whipsaw summaries, and event-family performance chart.
+- Trust: feedback weights and trust-weight chart used by the adjusted signal
+  contract.
 
 ## 8. Archived Extras
 
@@ -336,6 +357,8 @@ As of the latest local run:
   live fetch, calibration, and trust adjustment.
 - `dashboard/` serves from the workspace root and loads the adjusted signal,
   performance, and trust CSVs over HTTP.
+- The dashboard now includes probability timeline, event-family performance,
+  and trust-weight charts.
 
 ## GitHub Upload Checklist
 

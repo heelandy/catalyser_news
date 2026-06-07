@@ -32,6 +32,9 @@ const els = {
   signalsBody: document.querySelector("#signalsBody"),
   performanceBody: document.querySelector("#performanceBody"),
   trustBody: document.querySelector("#trustBody"),
+  probabilityChart: document.querySelector("#probabilityChart"),
+  performanceChart: document.querySelector("#performanceChart"),
+  trustChart: document.querySelector("#trustChart"),
   detailPanel: document.querySelector("#detailPanel"),
   tabs: Array.from(document.querySelectorAll(".tab")),
   views: Array.from(document.querySelectorAll(".view")),
@@ -290,6 +293,58 @@ function probabilityCell(row) {
   `;
 }
 
+function boundedPercent(value) {
+  return Math.max(0, Math.min(100, numberValue(value, 0) * 100));
+}
+
+function renderProbabilityChart() {
+  const rows = [...state.signals].sort((a, b) => String(a.release_time).localeCompare(String(b.release_time)));
+  if (!rows.length) {
+    els.probabilityChart.innerHTML = '<div class="empty">No signal probabilities loaded</div>';
+    return;
+  }
+
+  const width = 980;
+  const height = 248;
+  const left = 52;
+  const right = 28;
+  const top = 26;
+  const bottom = 44;
+  const plotWidth = width - left - right;
+  const plotHeight = height - top - bottom;
+  const xStep = rows.length > 1 ? plotWidth / (rows.length - 1) : 0;
+  const points = rows.map((row, index) => {
+    const x = left + index * xStep;
+    const y = top + (1 - row.bull) * plotHeight;
+    return { row, x, y };
+  });
+  const path = points.map((point, index) => `${index ? "L" : "M"} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(" ");
+  const midY = top + 0.5 * plotHeight;
+
+  els.probabilityChart.innerHTML = `
+    <svg class="chart-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Final bullish probability timeline">
+      <line class="chart-axis" x1="${left}" y1="${top}" x2="${left}" y2="${height - bottom}"></line>
+      <line class="chart-axis" x1="${left}" y1="${height - bottom}" x2="${width - right}" y2="${height - bottom}"></line>
+      <line class="chart-midline" x1="${left}" y1="${midY}" x2="${width - right}" y2="${midY}"></line>
+      <text class="chart-label" x="12" y="${top + 4}">100%</text>
+      <text class="chart-label" x="20" y="${midY + 4}">50%</text>
+      <text class="chart-label" x="26" y="${height - bottom + 4}">0%</text>
+      <path class="chart-line" d="${path}"></path>
+      ${points.map((point) => `
+        <circle class="chart-point ${escapeHtml(point.row.direction)}" cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="5">
+          <title>${escapeHtml(clean(point.row.title))}: ${percent(point.row.bull, 1)}</title>
+        </circle>
+      `).join("")}
+      ${points.map((point, index) => {
+        if (index % Math.ceil(points.length / 6) !== 0 && index !== points.length - 1) {
+          return "";
+        }
+        return `<text class="chart-label" x="${point.x.toFixed(1)}" y="${height - 16}" text-anchor="middle">${escapeHtml(formatTime(point.row.release_time))}</text>`;
+      }).join("")}
+    </svg>
+  `;
+}
+
 function renderSignals() {
   const rows = sortRows(filteredSignals());
   if (!state.selectedId && rows.length) {
@@ -389,6 +444,35 @@ function renderPerformance() {
     : '<tr><td colspan="8"><div class="empty">No performance rows loaded</div></td></tr>';
 }
 
+function renderPerformanceChart() {
+  const rows = state.performance
+    .filter((row) => row.group_type === "event_family_market_bias")
+    .sort((a, b) => numberValue(b.sample_size, 0) - numberValue(a.sample_size, 0))
+    .slice(0, 10);
+
+  els.performanceChart.innerHTML = rows.length
+    ? rows.map((row) => {
+      const accuracy = boundedPercent(row.primary_accuracy);
+      const whipsaw = boundedPercent(row.whipsaw_rate);
+      const fillClass = accuracy >= 60 ? "" : accuracy >= 40 ? "warn" : "fade";
+      const label = `${titleCase(row.event_family)} / ${titleCase(row.market_bias_side)}`;
+      return `
+        <div class="chart-row-item">
+          <div class="chart-row-label">
+            <strong title="${escapeHtml(label)}">${escapeHtml(label)}</strong>
+            <span>${escapeHtml(clean(row.sample_size))} samples, ${points(row.avg_primary_return_pts, 1)} pts avg</span>
+          </div>
+          <div class="chart-track" title="Accuracy ${percent(row.primary_accuracy, 0)}, whipsaw ${percent(row.whipsaw_rate, 0)}">
+            <span class="chart-fill ${fillClass}" style="--value:${accuracy}%"></span>
+            <span class="chart-marker" style="--value:${whipsaw}%"></span>
+          </div>
+          <div class="chart-value">${percent(row.primary_accuracy, 0)}</div>
+        </div>
+      `;
+    }).join("")
+    : '<div class="empty">No event-family performance rows loaded</div>';
+}
+
 function renderTrust() {
   const rows = state.trust
     .filter((row) => row.usable_for_live_signal === "True" || row.usable_for_live_signal === "true" || row.usable_for_live_signal === true)
@@ -410,12 +494,48 @@ function renderTrust() {
     : '<tr><td colspan="8"><div class="empty">No trust rows loaded</div></td></tr>';
 }
 
+function renderTrustChart() {
+  const rows = state.trust
+    .filter((row) => row.usable_for_live_signal === "True" || row.usable_for_live_signal === "true" || row.usable_for_live_signal === true)
+    .sort((a, b) => numberValue(a.trust_weight, 0) - numberValue(b.trust_weight, 0))
+    .slice(0, 12);
+
+  els.trustChart.innerHTML = rows.length
+    ? rows.map((row) => {
+      const weight = numberValue(row.trust_weight, 1);
+      const scaled = Math.max(0, Math.min(100, ((weight - 0.25) / 1.10) * 100));
+      const fillClass = weight >= 1.05 ? "" : weight >= 0.75 ? "warn" : "fade";
+      const label = [
+        titleCase(row.event_family, ""),
+        titleCase(row.catalyst_category, ""),
+        titleCase(row.market_bias_side, ""),
+        titleCase(row.confidence_label, ""),
+      ].filter((part) => part && part !== "--").join(" / ") || titleCase(row.group_type);
+      return `
+        <div class="chart-row-item">
+          <div class="chart-row-label">
+            <strong title="${escapeHtml(label)}">${escapeHtml(label)}</strong>
+            <span>${escapeHtml(titleCase(row.group_type))}, ${escapeHtml(clean(row.sample_size))} samples</span>
+          </div>
+          <div class="chart-track" title="${escapeHtml(clean(row.trust_note))}">
+            <span class="chart-fill ${fillClass}" style="--value:${scaled}%"></span>
+          </div>
+          <div class="chart-value">${points(row.trust_weight, 2)}</div>
+        </div>
+      `;
+    }).join("")
+    : '<div class="empty">No trust weights loaded</div>';
+}
+
 function renderAll() {
   setDataStamp();
   renderMetrics();
   renderCategories();
+  renderProbabilityChart();
   renderSignals();
+  renderPerformanceChart();
   renderPerformance();
+  renderTrustChart();
   renderTrust();
 }
 
