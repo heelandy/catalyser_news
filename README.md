@@ -7,7 +7,10 @@ each responsibility separate:
 - `fetch_nq_yahoo.py` downloads market OHLC data from Yahoo Finance.
 - `catalyser_news.py` watches scheduled catalysts and live economic-calendar rows.
 - `macro_reaction_study.py` learns how NQ historically reacted to macro surprises.
-- `hs_validation.py` and the fill converters validate trade logs separately.
+
+Older validation tools, broker exports, sample files, duplicate parquet outputs,
+and one-off test artifacts are archived under `extra/` so the root stays focused
+on the macro catalyst engine.
 
 This is research tooling, not financial advice. Live-market use needs monitoring,
 logging, and broker/risk controls before any automation is connected to orders.
@@ -156,28 +159,19 @@ The compact UI contract is `macro_live_signal.csv`. It includes:
 - `confidence`
 - `warning`
 
-## 4. Validate Trades
+## 4. Archived Extras
 
-Convert broker/exported fills into round-trip trades:
+The `extra/` folder contains side tools and old generated artifacts that are not
+part of the current catalyst engine workflow. Examples include:
 
-```powershell
-python .\tradovate_fills_to_trades.py --fills Orders.csv --out nq_trades.csv
-python .\tradingview_fills_to_trades.py --fills Fills.csv --out nq_trades.csv
-```
+- trade/fill converters
+- HIGHSTRIKE validation scripts
+- broker export CSVs
+- old test outputs
+- duplicate parquet files
+- local upload zip/cache material
 
-Run the statistical validation engine:
-
-```powershell
-python .\hs_validation.py --trades nq_trades.csv --symbol NQ --capital 50000
-python .\hs_validation.py --market-data NQ_F_daily.csv --symbol NQ --capital 50000 --walkforward --walkforward-output walkforward_folds.csv --stress-periods default --stress-output stress_periods.csv --cost-per-contract 2
-```
-
-Synthetic sample data is included for pipeline tests:
-
-```powershell
-python .\make_nq_sample.py --n 400 --out nq_sample_trades.csv
-python .\hs_validation.py --trades nq_sample_trades.csv --symbol NQ --capital 50000
-```
+Those files are kept for reference, not deleted.
 
 ## Important Files
 
@@ -186,11 +180,10 @@ python .\hs_validation.py --trades nq_sample_trades.csv --symbol NQ --capital 50
 | `fetch_nq_yahoo.py` | Dynamic Yahoo market-data downloader. |
 | `catalyser_news.py` | Catalyst calendar, news, live macro release watcher, probability scoring. |
 | `macro_reaction_study.py` | Historical event-to-price reaction study and live-release calibration. |
-| `hs_validation.py` | Trade-list validation, Monte Carlo, walk-forward, stress tests. |
-| `build_market_data_store.py` | Optional DuckDB/Parquet market-data store builder. |
-| `tradovate_fills_to_trades.py` | Tradovate fills to round-trip trades. |
-| `tradingview_fills_to_trades.py` | TradingView fills to round-trip trades. |
-| `make_nq_sample.py` | Synthetic NQ trades for validation tests. |
+| `macro_live_signal.csv` | Compact UI-ready live signal contract. |
+| `macro_reaction_profiles_5m.csv` | Smoothed historical reaction probabilities. |
+| `macro_event_clusters_5m_60d.csv` | Same-timestamp macro release clusters. |
+| `extra/` | Archived side tools, private exports, and old generated artifacts. |
 | `requirements.txt` | Python dependencies. |
 
 ## Data Notes
