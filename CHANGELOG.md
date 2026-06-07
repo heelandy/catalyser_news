@@ -1,5 +1,43 @@
 # Changelog
 
+## 1.0.0 - Validation and Timing Controls
+
+- Activated `market_data_config.json` inside the pipeline runner for source,
+  ticker, active market-data file, and active profile defaults.
+- Added `macro_data_quality.py` for market-data health, OHLC checks, gaps, and
+  release coverage.
+- Added `macro_probability_validation.py` for calibration, Brier score, and
+  probability-band reliability reporting.
+- Added `macro_timing_audit.py` for release-to-bar timing precision checks.
+- Added a compact dashboard alert panel backed by
+  `macro_pipeline_alert_summary.json`.
+- Tightened confidence scoring and caps for low-sample, whippy, fallback, and
+  weak-edge signals.
+
+## 0.9.1 - Yahoo Default Source
+
+- Added `market_data_config.json` with Yahoo as the default market-data source.
+- Updated source-selection docs so external APIs are treated as future optional
+  upgrades, not current requirements.
+
+## 0.9.0 - External Futures Data Adapter
+
+- Added `futures_data_adapter.py` to normalize broker/platform/paid-feed
+  futures CSV exports into the canonical OHLC format used by the reaction
+  study.
+- Added timezone conversion, optional resampling, multi-file combine, column
+  auto-detection, and JSON import summaries.
+- Added local ignore rules for external market-data exports.
+- Added `MARKET_DATA_SOURCES.md` to compare source choices before committing to
+  a vendor/API.
+
+## 0.8.0 - Alert Notifications
+
+- Added `macro_alert_notify.py` as a separate optional alert delivery module.
+- Added console, bell, webhook, email, and local risk-lock notification targets.
+- Added runner flags to notify after alert detection without changing the
+  dashboard.
+
 ## 0.7.0 - Pipeline Alerting
 
 - Added `macro_pipeline_alerts.py` as a separate backend alert detector.
@@ -110,7 +148,6 @@
 
 ## Next
 
-- Add richer historical futures data when Yahoo's intraday limits are not enough.
-- Add notification targets for alerts, such as sound, email, webhook, or broker
-  risk-lock hooks.
 - Add alert display inside the dashboard for newly released actual values.
+- Add provider-specific download connectors once a futures data vendor/API is
+  selected.

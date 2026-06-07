@@ -55,9 +55,9 @@ def text_value(value) -> str:
 def confidence_label(value: float) -> str:
     if pd.isna(value):
         return "low"
-    if value >= 0.66:
+    if value >= 0.70:
         return "high"
-    if value >= 0.35:
+    if value >= 0.40:
         return "medium"
     return "low"
 
@@ -279,6 +279,36 @@ def apply_trust_to_signal(
         min_probability,
         max_probability,
     )
+    confidence_caps = []
+    confidence_cap = 0.99
+    trust_sample_size = as_float(trust_fields.get("trust_sample_size"), 0.0)
+    trust_whipsaw = as_float(trust_fields.get("trust_whipsaw_rate"), np.nan)
+    trust_reliability = as_float(trust_fields.get("trust_sample_reliability"), 0.0)
+    edge = abs(adjusted_probability - 0.5)
+
+    if match is None:
+        confidence_cap = min(confidence_cap, 0.28)
+        confidence_caps.append("confidence_cap_no_trust_history")
+    if trust_sample_size < 5:
+        confidence_cap = min(confidence_cap, 0.32)
+        confidence_caps.append("confidence_cap_low_sample")
+    if not pd.isna(trust_whipsaw) and trust_whipsaw >= 0.50:
+        confidence_cap = min(confidence_cap, 0.28)
+        confidence_caps.append("confidence_cap_whipsaw")
+    if trust_reliability < 0.25:
+        confidence_cap = min(confidence_cap, 0.35)
+        confidence_caps.append("confidence_cap_low_reliability")
+    if text_value(trust_fields.get("trust_group_type")) in {"market_bias_side", "confidence_label", "overall"}:
+        confidence_cap = min(confidence_cap, 0.35)
+        confidence_caps.append("confidence_cap_fallback_group")
+    if edge < 0.08:
+        confidence_cap = min(confidence_cap, 0.22)
+        confidence_caps.append("confidence_cap_weak_edge")
+
+    capped_confidence = clamp(adjusted_confidence, 0.0, confidence_cap)
+    if capped_confidence < adjusted_confidence:
+        trust_fields["trust_warning"] = warning_text(trust_fields["trust_warning"], confidence_caps)
+    adjusted_confidence = capped_confidence
     adjusted_direction = direction_from_probability(adjusted_probability, bullish_threshold, bearish_threshold)
     adjusted_confidence_label = confidence_label(adjusted_confidence)
 

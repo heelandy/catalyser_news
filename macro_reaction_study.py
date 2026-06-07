@@ -928,7 +928,15 @@ def build_live_signal_frame(calibrated: pd.DataFrame) -> pd.DataFrame:
         sample_confidence = probability_from_row(row, "historical_sample_confidence", 0.0)
         rule_confidence = probability_from_row(row, "market_rule_confidence", 0.0)
         edge_confidence = min(1.0, abs(calibrated_bull - 0.5) * 2.0)
-        confidence = min(1.0, sample_confidence * 0.50 + rule_confidence * 0.20 + edge_confidence * 0.30)
+        confidence = min(1.0, sample_confidence * 0.45 + rule_confidence * 0.15 + edge_confidence * 0.25)
+        sample_size = parse_economic_value(row.get("historical_sample_size")) or 0.0
+        market_bias_side = str(row.get("market_bias_side") or "")
+        if sample_size < 5:
+            confidence = min(confidence, 0.32)
+        if abs(calibrated_bull - 0.5) < 0.08:
+            confidence = min(confidence, 0.22)
+        if market_bias_side in {"market_unknown", "market_mixed", ""}:
+            confidence = min(confidence, 0.25)
 
         rows.append(
             {

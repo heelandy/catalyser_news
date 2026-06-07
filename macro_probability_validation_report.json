@@ -1,0 +1,29 @@
+{
+  "grades_file": ".\\macro_signal_grades.csv",
+  "notes": [
+    "calibration_error is avg predicted bullish probability minus actual bullish rate",
+    "brier_bullish is lower when probability forecasts are better calibrated"
+  ],
+  "overall": {
+    "actual_bullish_rate": 0.625,
+    "avg_confidence": 0.3257150309523809,
+    "avg_predicted_bullish_probability": 0.4870318928571428,
+    "avg_probability_edge": 0.22182788095238118,
+    "brier_bullish": 0.25048123146040935,
+    "calibration_error": -0.13796810714285718,
+    "directional_sample_size": 24,
+    "primary_direction_accuracy": 0.2916666666666667,
+    "sample_size": 24
+  },
+  "probability_bins": [
+    0.0,
+    0.4,
+    0.45,
+    0.5,
+    0.55,
+    0.6,
+    0.7,
+    1.0
+  ],
+  "rows_loaded": 24
+}

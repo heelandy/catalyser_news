@@ -1,0 +1,20 @@
+{
+  "default_source": "yahoo",
+  "active_market_data_file": "NQ_5min_data.csv",
+  "active_profiles_file": "macro_reaction_profiles_5m.csv",
+  "yahoo": {
+    "enabled": true,
+    "ticker": "NQ=F",
+    "preset": "intraday",
+    "primary_intraday_interval": "5m",
+    "refresh_on_runner": false,
+    "notes": "Yahoo is the default source until an external futures API/export is added."
+  },
+  "external_api": {
+    "enabled": false,
+    "provider": "",
+    "api_key_env": "",
+    "normalized_output": "NQ_external_1min_data.csv",
+    "notes": "Fill this later when a provider and API key are selected."
+  }
+}

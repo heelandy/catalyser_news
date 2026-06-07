@@ -1,6 +1,7 @@
 __pycache__/
 *.py[cod]
 extra/
+external_market_data/
 
 .venv/
 venv/
@@ -14,6 +15,11 @@ macro_pipeline_status.json
 macro_pipeline_alerts.csv
 macro_pipeline_alert_state.json
 macro_pipeline_alert_summary.json
+macro_alert_notify_state.json
+macro_alert_notify_status.json
+macro_alert_risk_lock.json
+futures_data_adapter_summary.json
+*_external_*data.csv
 
 # One-off local verification outputs.
 catalysts_market_bias_test.csv

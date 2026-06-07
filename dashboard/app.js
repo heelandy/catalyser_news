@@ -3,6 +3,7 @@ const DATA_PATHS = {
   performance: "../macro_signal_performance.csv",
   trust: "../macro_signal_trust_weights.csv",
   status: "../macro_pipeline_status.json",
+  alerts: "../macro_pipeline_alert_summary.json",
 };
 
 const state = {
@@ -10,6 +11,7 @@ const state = {
   performance: [],
   trust: [],
   status: null,
+  alertSummary: null,
   activeTab: "signals",
   selectedId: "",
   sortKey: "release_time",
@@ -27,6 +29,7 @@ const els = {
   reloadBtn: document.querySelector("#reloadBtn"),
   metrics: document.querySelector("#metrics"),
   componentRanges: document.querySelector("#componentRanges"),
+  alertPanel: document.querySelector("#alertPanel"),
   searchInput: document.querySelector("#searchInput"),
   categorySelect: document.querySelector("#categorySelect"),
   signalFilters: document.querySelector("#signalFilters"),
@@ -324,6 +327,44 @@ function renderComponentRanges() {
       </article>
     `)
     .join("");
+}
+
+function renderAlerts() {
+  const summary = state.alertSummary || {};
+  const alerts = Array.isArray(summary.latest_alerts) ? summary.latest_alerts.slice(-5).reverse() : [];
+  if (!alerts.length) {
+    els.alertPanel.classList.remove("active");
+    els.alertPanel.innerHTML = "";
+    return;
+  }
+
+  const checkedAt = clean(summary.checked_at, "");
+  els.alertPanel.classList.add("active");
+  els.alertPanel.innerHTML = `
+    <div class="alert-head">
+      <h2>Latest Alerts</h2>
+      <span>${alerts.length} shown${checkedAt ? `, checked ${escapeHtml(checkedAt)}` : ""}</span>
+    </div>
+    <div class="alert-list">
+      ${alerts.map((alert) => {
+        const severity = clean(alert.severity, "info").toLowerCase();
+        const label = ["high", "medium", "info"].includes(severity) ? severity : "info";
+        const title = clean(alert.title || alert.alert_type, "Pipeline Alert");
+        const message = clean(alert.message, "");
+        const time = formatTime(alert.release_time || alert.alert_time);
+        return `
+          <div class="alert-item">
+            <span class="alert-severity ${escapeHtml(label)}">${escapeHtml(label)}</span>
+            <div>
+              <strong title="${escapeHtml(title)}">${escapeHtml(title)}</strong>
+              <span title="${escapeHtml(message)}">${escapeHtml(message)}</span>
+            </div>
+            <em>${escapeHtml(time)}</em>
+          </div>
+        `;
+      }).join("")}
+    </div>
+  `;
 }
 
 function renderCategories() {
@@ -645,6 +686,7 @@ function renderAll() {
   setDataStamp();
   renderMetrics();
   renderComponentRanges();
+  renderAlerts();
   renderCategories();
   renderProbabilityChart();
   renderSignals();
@@ -666,16 +708,18 @@ function escapeHtml(value) {
 async function loadAll() {
   els.dataStamp.textContent = "Loading data";
   try {
-    const [signals, performance, trust, status] = await Promise.all([
+    const [signals, performance, trust, status, alertSummary] = await Promise.all([
       fetchCsv(DATA_PATHS.signals),
       fetchCsv(DATA_PATHS.performance),
       fetchCsv(DATA_PATHS.trust),
       fetchJson(DATA_PATHS.status).catch(() => null),
+      fetchJson(DATA_PATHS.alerts).catch(() => null),
     ]);
     state.signals = normalizeSignals(signals);
     state.performance = performance;
     state.trust = trust;
     state.status = status;
+    state.alertSummary = alertSummary;
     state.selectedId = state.signals[0]?.id || "";
     renderAll();
   } catch (error) {

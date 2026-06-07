@@ -1,0 +1,13 @@
+metric,value
+rows,13552
+usable_rows,13552
+duplicate_timestamps,0
+interval_mode_seconds,300.0
+large_gap_count,20
+high_less_than_low,0
+high_below_open_or_close,0
+low_above_open_or_close,0
+events_loaded,14
+events_inside_market_range,8
+quality_score,80
+quality_label,watch
