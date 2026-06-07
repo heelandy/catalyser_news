@@ -23,6 +23,7 @@
 
     <main class="app-shell">
       <section class="metrics" id="metrics"></section>
+      <section class="range-grid" id="componentRanges"></section>
 
       <section class="toolbar" aria-label="Signal controls">
         <div class="tabs" role="tablist" aria-label="Dashboard views">
@@ -60,6 +61,7 @@
               <h2>Probability Timeline</h2>
               <p>Final bullish probability by release time</p>
             </div>
+            <div class="range-strip" id="probabilityRange"></div>
           </div>
           <div id="probabilityChart" class="chart-box"></div>
         </section>
@@ -91,6 +93,7 @@
               <h2>Event-Family Performance</h2>
               <p>Primary accuracy with whipsaw pressure</p>
             </div>
+            <div class="range-strip" id="performanceRange"></div>
           </div>
           <div id="performanceChart" class="bar-chart"></div>
         </section>
@@ -120,6 +123,7 @@
               <h2>Trust Weights</h2>
               <p>Feedback multiplier applied to live probability edges</p>
             </div>
+            <div class="range-strip" id="trustRange"></div>
           </div>
           <div id="trustChart" class="bar-chart"></div>
         </section>
@@ -143,6 +147,6 @@
       </section>
     </main>
 
-    <script src="./app.js"></script>
+    <script src="./app.js?v=0.6.2"></script>
   </body>
 </html>

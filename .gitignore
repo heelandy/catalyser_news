@@ -11,6 +11,9 @@ env/
 *.log
 *_github_upload.zip
 macro_pipeline_status.json
+macro_pipeline_alerts.csv
+macro_pipeline_alert_state.json
+macro_pipeline_alert_summary.json
 
 # One-off local verification outputs.
 catalysts_market_bias_test.csv

@@ -176,6 +176,49 @@ h1 {
   white-space: nowrap;
 }
 
+.range-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.range-card {
+  min-height: 94px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.range-card h2 {
+  margin: 0 0 10px;
+  color: var(--strong);
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.range-list {
+  display: grid;
+  gap: 7px;
+}
+
+.range-item {
+  display: grid;
+  grid-template-columns: minmax(92px, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.range-item strong {
+  color: var(--strong);
+  font-weight: 760;
+  white-space: nowrap;
+}
+
 .toolbar {
   display: flex;
   align-items: center;
@@ -296,6 +339,32 @@ select:focus {
   margin-top: 3px;
   color: var(--muted);
   font-size: 12px;
+}
+
+.range-strip {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.range-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  background: #fbfcfb;
+  font-size: 12px;
+  font-weight: 720;
+  white-space: nowrap;
+}
+
+.range-chip strong {
+  margin-left: 5px;
+  color: var(--strong);
 }
 
 .chart-box {
@@ -442,11 +511,14 @@ select:focus {
 }
 
 .table-wrap {
+  height: min(680px, calc(100vh - 210px));
   min-height: 520px;
   overflow: auto;
+  padding-bottom: 10px;
 }
 
 .table-wrap.wide {
+  height: min(720px, calc(100vh - 190px));
   min-height: 580px;
 }
 
@@ -498,6 +570,10 @@ tbody tr:hover {
 
 tbody tr.selected {
   background: #edf6f2;
+}
+
+tbody tr:last-child td {
+  border-bottom: 0;
 }
 
 .muted {
@@ -683,6 +759,19 @@ tbody tr.selected {
     grid-template-columns: repeat(3, minmax(150px, 1fr));
   }
 
+  .range-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .chart-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .range-strip {
+    justify-content: flex-start;
+  }
+
   .toolbar,
   .content-grid {
     grid-template-columns: 1fr;
@@ -698,6 +787,12 @@ tbody tr.selected {
 
   .detail-panel {
     position: static;
+  }
+
+  .table-wrap,
+  .table-wrap.wide {
+    height: auto;
+    max-height: none;
   }
 
   .chart-row-item {
@@ -721,6 +816,11 @@ tbody tr.selected {
 
   .metrics {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .range-item {
+    grid-template-columns: 1fr;
+    gap: 2px;
   }
 
   .filters,

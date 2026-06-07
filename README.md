@@ -10,6 +10,7 @@ each responsibility separate:
 - `macro_signal_performance.py` grades signal predictions after releases occur.
 - `macro_signal_trust.py` feeds those grades back into live signal probabilities.
 - `macro_pipeline_runner.py` runs the separated modules in a repeatable loop.
+- `macro_pipeline_alerts.py` detects release-state and runner-health changes.
 - `dashboard/` displays the adjusted signals, performance, and trust weights.
 
 Older validation tools, broker exports, sample files, duplicate parquet outputs,
@@ -235,12 +236,32 @@ Optional switches:
 - `--market-preset intraday` refreshes Yahoo data before the live cycle.
 - `--refresh-performance` rebuilds signal grades and performance summaries when
   reaction files are already current.
+- `--skip-alerts` disables the separate alert detector for that runner cycle.
+- `--alert-probability-jump-threshold 0.10` controls how large a probability
+  change must be before an alert is logged.
+- `--emit-initial-alerts` logs new-signal alerts on the first alert snapshot.
 - `--dry-run` prints the stage commands without executing them.
 - `--stop-on-error` exits a forever run after a failed cycle.
 
 The runner writes `macro_pipeline_runner.log` and `macro_pipeline_status.json`
 for monitoring. These local runtime files are not included in the GitHub upload
 allowlist.
+
+After each non-dry-run cycle, the runner also calls the separate alert detector:
+
+```powershell
+python .\macro_pipeline_alerts.py --signals macro_live_signal_adjusted.csv --status macro_pipeline_status.json
+```
+
+Alert outputs are local runtime files and are ignored by Git:
+
+- `macro_pipeline_alerts.csv`: append-only alert history.
+- `macro_pipeline_alert_summary.json`: latest alert-check summary.
+- `macro_pipeline_alert_state.json`: previous snapshot used to detect changes.
+
+The detector watches for actual values appearing, release-status changes,
+direction changes, large probability/confidence jumps, runner failures, and
+runner recovery.
 
 ### When Direction Probability Updates
 
@@ -285,7 +306,8 @@ The dashboard reads:
 
 Views:
 
-- Signals: live catalyst table, final probabilities, filters, and detail panel.
+- Signals: live catalyst table, final probabilities, filters, range cards, and
+  detail panel.
 - Performance: accuracy, whipsaw summaries, and event-family performance chart.
 - Trust: feedback weights and trust-weight chart used by the adjusted signal
   contract.
@@ -314,6 +336,7 @@ Those files are kept for reference, not deleted.
 | `macro_signal_performance.py` | Post-release prediction grading and performance summaries. |
 | `macro_signal_trust.py` | Performance feedback layer for trust-adjusted live probabilities. |
 | `macro_pipeline_runner.py` | 24/7 orchestration layer that calls the separate modules in order. |
+| `macro_pipeline_alerts.py` | Separate local alert detector for release changes and runner health. |
 | `dashboard/index.html` | Local browser dashboard for adjusted macro signals. |
 | `dashboard/app.js` | CSV loader, filters, tables, and detail panel for the dashboard. |
 | `dashboard/styles.css` | Dashboard visual system and responsive layout. |
@@ -355,10 +378,13 @@ As of the latest local run:
   live signal rows.
 - `macro_pipeline_runner.py --dry-run` verified the default stage order:
   live fetch, calibration, and trust adjustment.
+- `macro_pipeline_alerts.py` is wired into the runner after each normal cycle
+  and can be run manually against the adjusted signal CSV and status JSON.
 - `dashboard/` serves from the workspace root and loads the adjusted signal,
   performance, and trust CSVs over HTTP.
 - The dashboard now includes probability timeline, event-family performance,
-  and trust-weight charts.
+  trust-weight charts, and min/max range summaries for signal, performance, and
+  trust components.
 
 ## GitHub Upload Checklist
 

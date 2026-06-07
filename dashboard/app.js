@@ -26,6 +26,7 @@ const els = {
   dataStamp: document.querySelector("#dataStamp"),
   reloadBtn: document.querySelector("#reloadBtn"),
   metrics: document.querySelector("#metrics"),
+  componentRanges: document.querySelector("#componentRanges"),
   searchInput: document.querySelector("#searchInput"),
   categorySelect: document.querySelector("#categorySelect"),
   signalFilters: document.querySelector("#signalFilters"),
@@ -35,6 +36,9 @@ const els = {
   probabilityChart: document.querySelector("#probabilityChart"),
   performanceChart: document.querySelector("#performanceChart"),
   trustChart: document.querySelector("#trustChart"),
+  probabilityRange: document.querySelector("#probabilityRange"),
+  performanceRange: document.querySelector("#performanceRange"),
+  trustRange: document.querySelector("#trustRange"),
   detailPanel: document.querySelector("#detailPanel"),
   tabs: Array.from(document.querySelectorAll(".tab")),
   views: Array.from(document.querySelectorAll(".view")),
@@ -139,6 +143,39 @@ function clean(value, fallback = "--") {
   return text || fallback;
 }
 
+function minMax(rows, getter) {
+  const values = rows
+    .map(getter)
+    .map((value) => numberValue(value))
+    .filter((value) => Number.isFinite(value));
+  if (!values.length) {
+    return { min: NaN, max: NaN };
+  }
+  return {
+    min: Math.min(...values),
+    max: Math.max(...values),
+  };
+}
+
+function rangeText(range, formatter) {
+  if (!Number.isFinite(range.min) || !Number.isFinite(range.max)) {
+    return "--";
+  }
+  return `${formatter(range.min)} / ${formatter(range.max)}`;
+}
+
+function rangeChip(label, range, formatter) {
+  return `<span class="range-chip">${label}<strong>${rangeText(range, formatter)}</strong></span>`;
+}
+
+function plainNumber(value) {
+  const n = numberValue(value);
+  if (!Number.isFinite(n)) {
+    return "--";
+  }
+  return Math.abs(n) >= 100 ? n.toFixed(0) : n.toFixed(2);
+}
+
 function formatTime(value) {
   const text = clean(value, "");
   if (!text) {
@@ -231,6 +268,64 @@ function renderMetrics() {
     .join("");
 }
 
+function rangeItem(label, range, formatter) {
+  return `
+    <div class="range-item">
+      <span>${label}</span>
+      <strong>${rangeText(range, formatter)}</strong>
+    </div>
+  `;
+}
+
+function renderComponentRanges() {
+  const signalRows = state.signals;
+  const performanceRows = state.performance.filter((row) =>
+    ["overall", "event_family_market_bias", "catalyst_category", "market_bias_side"].includes(row.group_type)
+  );
+  const trustRows = state.trust.filter((row) =>
+    row.usable_for_live_signal === "True" || row.usable_for_live_signal === "true" || row.usable_for_live_signal === true
+  );
+
+  const sections = [
+    {
+      title: "Signal Range",
+      items: [
+        rangeItem("Bullish Prob.", minMax(signalRows, (row) => row.bull), (v) => percent(v, 0)),
+        rangeItem("Confidence", minMax(signalRows, (row) => row.confidence), (v) => percent(v, 0)),
+        rangeItem("Trust Weight", minMax(signalRows, (row) => row.trust_weight), (v) => points(v, 2)),
+        rangeItem("Surprise", minMax(signalRows, (row) => row.surprise), (v) => plainNumber(v)),
+      ],
+    },
+    {
+      title: "Performance Range",
+      items: [
+        rangeItem("Accuracy", minMax(performanceRows, (row) => row.primary_accuracy), (v) => percent(v, 0)),
+        rangeItem("Whipsaw", minMax(performanceRows, (row) => row.whipsaw_rate), (v) => percent(v, 0)),
+        rangeItem("Avg Return", minMax(performanceRows, (row) => row.avg_primary_return_pts), (v) => points(v, 1)),
+        rangeItem("Samples", minMax(performanceRows, (row) => row.sample_size), (v) => points(v, 0)),
+      ],
+    },
+    {
+      title: "Trust Range",
+      items: [
+        rangeItem("Weight", minMax(trustRows, (row) => row.trust_weight), (v) => points(v, 2)),
+        rangeItem("Smoothed Acc.", minMax(trustRows, (row) => row.smoothed_primary_accuracy), (v) => percent(v, 0)),
+        rangeItem("Reliability", minMax(trustRows, (row) => row.sample_reliability), (v) => percent(v, 0)),
+        rangeItem("Samples", minMax(trustRows, (row) => row.sample_size), (v) => points(v, 0)),
+      ],
+    },
+  ];
+
+  els.componentRanges.innerHTML = sections
+    .map((section) => `
+      <article class="range-card">
+        <h2>${section.title}</h2>
+        <div class="range-list">${section.items.join("")}</div>
+      </article>
+    `)
+    .join("");
+}
+
 function renderCategories() {
   const categories = Array.from(new Set(state.signals.map((row) => clean(row.catalyst_category, "")).filter(Boolean))).sort();
   const current = state.filters.category;
@@ -301,8 +396,15 @@ function renderProbabilityChart() {
   const rows = [...state.signals].sort((a, b) => String(a.release_time).localeCompare(String(b.release_time)));
   if (!rows.length) {
     els.probabilityChart.innerHTML = '<div class="empty">No signal probabilities loaded</div>';
+    els.probabilityRange.innerHTML = "";
     return;
   }
+
+  els.probabilityRange.innerHTML = [
+    rangeChip("Bull", minMax(rows, (row) => row.bull), (v) => percent(v, 0)),
+    rangeChip("Confidence", minMax(rows, (row) => row.confidence), (v) => percent(v, 0)),
+    rangeChip("Trust", minMax(rows, (row) => row.trust_weight), (v) => points(v, 2)),
+  ].join("");
 
   const width = 980;
   const height = 248;
@@ -313,12 +415,12 @@ function renderProbabilityChart() {
   const plotWidth = width - left - right;
   const plotHeight = height - top - bottom;
   const xStep = rows.length > 1 ? plotWidth / (rows.length - 1) : 0;
-  const points = rows.map((row, index) => {
+  const plotPoints = rows.map((row, index) => {
     const x = left + index * xStep;
     const y = top + (1 - row.bull) * plotHeight;
     return { row, x, y };
   });
-  const path = points.map((point, index) => `${index ? "L" : "M"} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(" ");
+  const path = plotPoints.map((point, index) => `${index ? "L" : "M"} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(" ");
   const midY = top + 0.5 * plotHeight;
 
   els.probabilityChart.innerHTML = `
@@ -330,13 +432,13 @@ function renderProbabilityChart() {
       <text class="chart-label" x="20" y="${midY + 4}">50%</text>
       <text class="chart-label" x="26" y="${height - bottom + 4}">0%</text>
       <path class="chart-line" d="${path}"></path>
-      ${points.map((point) => `
+      ${plotPoints.map((point) => `
         <circle class="chart-point ${escapeHtml(point.row.direction)}" cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="5">
           <title>${escapeHtml(clean(point.row.title))}: ${percent(point.row.bull, 1)}</title>
         </circle>
       `).join("")}
-      ${points.map((point, index) => {
-        if (index % Math.ceil(points.length / 6) !== 0 && index !== points.length - 1) {
+      ${plotPoints.map((point, index) => {
+        if (index % Math.ceil(plotPoints.length / 6) !== 0 && index !== plotPoints.length - 1) {
           return "";
         }
         return `<text class="chart-label" x="${point.x.toFixed(1)}" y="${height - 16}" text-anchor="middle">${escapeHtml(formatTime(point.row.release_time))}</text>`;
@@ -450,6 +552,12 @@ function renderPerformanceChart() {
     .sort((a, b) => numberValue(b.sample_size, 0) - numberValue(a.sample_size, 0))
     .slice(0, 10);
 
+  els.performanceRange.innerHTML = [
+    rangeChip("Accuracy", minMax(rows, (row) => row.primary_accuracy), (v) => percent(v, 0)),
+    rangeChip("Whipsaw", minMax(rows, (row) => row.whipsaw_rate), (v) => percent(v, 0)),
+    rangeChip("Return", minMax(rows, (row) => row.avg_primary_return_pts), (v) => points(v, 1)),
+  ].join("");
+
   els.performanceChart.innerHTML = rows.length
     ? rows.map((row) => {
       const accuracy = boundedPercent(row.primary_accuracy);
@@ -500,6 +608,12 @@ function renderTrustChart() {
     .sort((a, b) => numberValue(a.trust_weight, 0) - numberValue(b.trust_weight, 0))
     .slice(0, 12);
 
+  els.trustRange.innerHTML = [
+    rangeChip("Weight", minMax(rows, (row) => row.trust_weight), (v) => points(v, 2)),
+    rangeChip("Accuracy", minMax(rows, (row) => row.smoothed_primary_accuracy), (v) => percent(v, 0)),
+    rangeChip("Reliability", minMax(rows, (row) => row.sample_reliability), (v) => percent(v, 0)),
+  ].join("");
+
   els.trustChart.innerHTML = rows.length
     ? rows.map((row) => {
       const weight = numberValue(row.trust_weight, 1);
@@ -530,6 +644,7 @@ function renderTrustChart() {
 function renderAll() {
   setDataStamp();
   renderMetrics();
+  renderComponentRanges();
   renderCategories();
   renderProbabilityChart();
   renderSignals();

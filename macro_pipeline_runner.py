@@ -226,6 +226,48 @@ def write_status(path: Path | None, status: dict, dry_run: bool) -> None:
     path.write_text(json.dumps(status, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
+def run_alert_detector(args: argparse.Namespace, root: Path, log_file: Path | None) -> None:
+    if args.skip_alerts or args.dry_run:
+        return
+
+    command = python_cmd(args, "macro_pipeline_alerts.py") + [
+        "--signals",
+        args.adjusted_signal_output,
+        "--state",
+        args.alert_state_output,
+        "--alerts-output",
+        args.alerts_output,
+        "--summary-output",
+        args.alert_summary_output,
+        "--probability-jump-threshold",
+        str(args.alert_probability_jump_threshold),
+        "--confidence-jump-threshold",
+        str(args.alert_confidence_jump_threshold),
+    ]
+    if args.status_output:
+        command += ["--status", args.status_output]
+    if args.emit_initial_alerts:
+        command.append("--emit-initial-alerts")
+
+    log(f"START alert_detector: {command_text(command)}", log_file)
+    proc = subprocess.Popen(
+        command,
+        cwd=root,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+    assert proc.stdout is not None
+    for output_line in proc.stdout:
+        log(f"alert_detector: {output_line.rstrip()}", log_file)
+    return_code = proc.wait()
+    if return_code != 0:
+        log(f"alert_detector failed with exit code {return_code}", log_file)
+    else:
+        log("DONE alert_detector", log_file)
+
+
 def run_cycle(args: argparse.Namespace, root: Path, cycle: int) -> bool:
     log_file = Path(args.log_file) if args.log_file else None
     stages = build_stages(args)
@@ -237,6 +279,8 @@ def run_cycle(args: argparse.Namespace, root: Path, cycle: int) -> bool:
         "failed_stage": "",
         "stages": [stage.name for stage in stages],
         "adjusted_signal_output": args.adjusted_signal_output,
+        "alerts_output": args.alerts_output,
+        "alert_summary_output": args.alert_summary_output,
     }
 
     log(f"Pipeline cycle {cycle} starting with {len(stages)} stage(s)", log_file)
@@ -255,6 +299,7 @@ def run_cycle(args: argparse.Namespace, root: Path, cycle: int) -> bool:
     finally:
         status["finished_at"] = now_iso()
         write_status(Path(args.status_output) if args.status_output else None, status, args.dry_run)
+        run_alert_detector(args, root, log_file)
 
 
 def sleep_between_cycles(seconds: int, log_file: Path | None) -> None:
@@ -274,6 +319,13 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--dry-run", action="store_true", help="Print commands and validate inputs without running stages")
     p.add_argument("--log-file", default="macro_pipeline_runner.log")
     p.add_argument("--status-output", default="macro_pipeline_status.json")
+    p.add_argument("--skip-alerts", action="store_true", help="Do not run the separate alert detector after each cycle")
+    p.add_argument("--alerts-output", default="macro_pipeline_alerts.csv")
+    p.add_argument("--alert-state-output", default="macro_pipeline_alert_state.json")
+    p.add_argument("--alert-summary-output", default="macro_pipeline_alert_summary.json")
+    p.add_argument("--alert-probability-jump-threshold", type=float, default=0.10)
+    p.add_argument("--alert-confidence-jump-threshold", type=float, default=0.15)
+    p.add_argument("--emit-initial-alerts", action="store_true", help="Emit new-signal alerts on the first alert detector snapshot")
 
     p.add_argument("--market-preset", choices=["none", "daily", "intraday", "intraday-deep"], default="none")
 

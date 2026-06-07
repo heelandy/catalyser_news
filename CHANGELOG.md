@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.7.0 - Pipeline Alerting
+
+- Added `macro_pipeline_alerts.py` as a separate backend alert detector.
+- The runner now calls the alert detector after each non-dry-run cycle so
+  release state changes and pipeline failures are logged outside the dashboard.
+- Added local alert outputs for alert history, latest summary, and detector
+  state.
+
+## 0.6.2 - Dashboard Range Fix
+
+- Fixed the probability chart range chips so they no longer shadow the numeric
+  point formatter and block dashboard data loading.
+- Versioned the dashboard script tag so browsers fetch the fixed JavaScript on
+  refresh.
+
+## 0.6.1 - Dashboard Ranges
+
+- Added min/max range cards for signal, performance, and trust dashboard
+  components.
+- Added min/max chips to the probability, performance, and trust chart headers.
+- Adjusted desktop table viewports so lower rows remain reachable inside the
+  table scroll area.
+
 ## 0.6.0 - Dashboard Charts and Timing Notes
 
 - Added dashboard charts for final probability timeline, event-family
@@ -88,5 +111,6 @@
 ## Next
 
 - Add richer historical futures data when Yahoo's intraday limits are not enough.
-- Add alerting around runner failures and release-time state changes.
-- Add alerting inside the dashboard for newly released actual values.
+- Add notification targets for alerts, such as sound, email, webhook, or broker
+  risk-lock hooks.
+- Add alert display inside the dashboard for newly released actual values.

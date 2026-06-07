@@ -38,6 +38,7 @@ UPLOAD_FILES = [
     "macro_signal_performance.py",
     "macro_signal_trust.py",
     "macro_pipeline_runner.py",
+    "macro_pipeline_alerts.py",
     "dashboard/index.html",
     "dashboard/styles.css",
     "dashboard/app.js",
