@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>NQ Macro Catalyst Dashboard</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <div>
+          <h1>NQ Macro Catalyst</h1>
+          <p id="dataStamp">Loading data</p>
+        </div>
+      </div>
+      <div class="top-actions">
+        <button id="reloadBtn" class="button" type="button">Reload</button>
+        <a class="button ghost" href="../macro_live_signal_adjusted.csv">CSV</a>
+      </div>
+    </header>
+
+    <main class="app-shell">
+      <section class="metrics" id="metrics"></section>
+
+      <section class="toolbar" aria-label="Signal controls">
+        <div class="tabs" role="tablist" aria-label="Dashboard views">
+          <button class="tab active" type="button" data-tab="signals">Signals</button>
+          <button class="tab" type="button" data-tab="performance">Performance</button>
+          <button class="tab" type="button" data-tab="trust">Trust</button>
+        </div>
+        <div class="filters" id="signalFilters">
+          <label class="field">
+            <span>Search</span>
+            <input id="searchInput" type="search" autocomplete="off" placeholder="Title, family, source">
+          </label>
+          <label class="field compact">
+            <span>Category</span>
+            <select id="categorySelect"></select>
+          </label>
+          <div class="segmented" aria-label="Release status">
+            <button class="segment active" type="button" data-filter="status" data-value="all">All</button>
+            <button class="segment" type="button" data-filter="status" data-value="released">Released</button>
+            <button class="segment" type="button" data-filter="status" data-value="waiting_actual">Waiting</button>
+          </div>
+          <div class="segmented" aria-label="Expected direction">
+            <button class="segment active" type="button" data-filter="direction" data-value="all">All</button>
+            <button class="segment" type="button" data-filter="direction" data-value="bullish">Bullish</button>
+            <button class="segment" type="button" data-filter="direction" data-value="bearish">Bearish</button>
+            <button class="segment" type="button" data-filter="direction" data-value="mixed">Mixed</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="view active" id="signalsView">
+        <div class="content-grid">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th data-sort="release_time">Time</th>
+                  <th data-sort="title">Catalyst</th>
+                  <th data-sort="final_expected_direction">Direction</th>
+                  <th data-sort="final_bullish_probability">Bull</th>
+                  <th data-sort="final_confidence">Confidence</th>
+                  <th data-sort="trust_weight">Trust</th>
+                  <th data-sort="release_status">Status</th>
+                </tr>
+              </thead>
+              <tbody id="signalsBody"></tbody>
+            </table>
+          </div>
+          <aside class="detail-panel" id="detailPanel"></aside>
+        </div>
+      </section>
+
+      <section class="view" id="performanceView">
+        <div class="table-wrap wide">
+          <table>
+            <thead>
+              <tr>
+                <th>Group</th>
+                <th>Family</th>
+                <th>Category</th>
+                <th>Bias</th>
+                <th>Samples</th>
+                <th>Accuracy</th>
+                <th>Whipsaw</th>
+                <th>Avg 60m</th>
+              </tr>
+            </thead>
+            <tbody id="performanceBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="view" id="trustView">
+        <div class="table-wrap wide">
+          <table>
+            <thead>
+              <tr>
+                <th>Group</th>
+                <th>Family</th>
+                <th>Bias</th>
+                <th>Samples</th>
+                <th>Smoothed Acc.</th>
+                <th>Whipsaw</th>
+                <th>Weight</th>
+                <th>Label</th>
+              </tr>
+            </thead>
+            <tbody id="trustBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

@@ -7,6 +7,10 @@ each responsibility separate:
 - `fetch_nq_yahoo.py` downloads market OHLC data from Yahoo Finance.
 - `catalyser_news.py` watches scheduled catalysts and live economic-calendar rows.
 - `macro_reaction_study.py` learns how NQ historically reacted to macro surprises.
+- `macro_signal_performance.py` grades signal predictions after releases occur.
+- `macro_signal_trust.py` feeds those grades back into live signal probabilities.
+- `macro_pipeline_runner.py` runs the separated modules in a repeatable loop.
+- `dashboard/` displays the adjusted signals, performance, and trust weights.
 
 Older validation tools, broker exports, sample files, duplicate parquet outputs,
 and one-off test artifacts are archived under `extra/` so the root stays focused
@@ -159,7 +163,113 @@ The compact UI contract is `macro_live_signal.csv`. It includes:
 - `confidence`
 - `warning`
 
-## 4. Archived Extras
+## 4. Grade Signal Performance
+
+After releases have occurred and reaction files exist, grade predictions against
+actual NQ movement:
+
+```powershell
+python .\macro_signal_performance.py --signals .\macro_live_signal.csv --reactions .\macro_reactions_1m.csv .\macro_reactions_5m.csv .\macro_reactions_60m.csv --reaction-labels 1m 5m 60m --windows-minutes 5,15,30,60,240,390 --primary-window-minutes 60 --grades-output macro_signal_grades.csv --performance-output macro_signal_performance.csv
+```
+
+Outputs:
+
+- `macro_signal_grades.csv`: one row per signal/reaction source with actual
+  5m, 15m, 30m, 60m, 240m, and 390m outcomes where available.
+- `macro_signal_performance.csv`: dashboard-ready accuracy summaries by source,
+  family, category, bias, confidence, and family+bias.
+
+## 5. Apply Trust Calibration
+
+Turn the performance summary into probability trust weights, then create the
+UI-ready adjusted signal contract:
+
+```powershell
+python .\macro_signal_trust.py --signals .\macro_live_signal.csv --performance .\macro_signal_performance.csv --weights-output macro_signal_trust_weights.csv --adjusted-output macro_live_signal_adjusted.csv
+```
+
+Outputs:
+
+- `macro_signal_trust_weights.csv`: reusable trust weights by event family,
+  category, market bias, confidence, and fallback groups.
+- `macro_live_signal_adjusted.csv`: live signals with original probabilities
+  preserved and final trust-adjusted fields appended.
+
+The UI should prefer these final fields when they are present:
+
+- `final_bullish_probability`
+- `final_bearish_probability`
+- `final_expected_direction`
+- `final_confidence`
+- `final_confidence_label`
+- `final_warning`
+
+Strong historical groups can boost an edge. Weak, low-sample, or whippy groups
+pull the probability back toward neutral. Broad fallback groups such as
+`market_bias_side`, `confidence_label`, and `overall` can discount weak signals,
+but their boosts are capped so unrelated history does not over-strengthen a
+new event type.
+
+## 6. Run The Pipeline
+
+Run one complete live cycle:
+
+```powershell
+python .\macro_pipeline_runner.py
+```
+
+Default cycle:
+
+- fetch current live macro rows into `macro_releases.csv`
+- calibrate them into `macro_live_signal.csv`
+- apply trust weights into `macro_live_signal_adjusted.csv`
+
+For release-time polling and continuous operation:
+
+```powershell
+python .\macro_pipeline_runner.py --run-forever --watch-releases --loop-seconds 60
+```
+
+Optional switches:
+
+- `--market-preset intraday` refreshes Yahoo data before the live cycle.
+- `--refresh-performance` rebuilds signal grades and performance summaries when
+  reaction files are already current.
+- `--dry-run` prints the stage commands without executing them.
+- `--stop-on-error` exits a forever run after a failed cycle.
+
+The runner writes `macro_pipeline_runner.log` and `macro_pipeline_status.json`
+for monitoring. These local runtime files are not included in the GitHub upload
+allowlist.
+
+## 7. Open The Dashboard
+
+Serve the workspace root and open the dashboard:
+
+```powershell
+python -m http.server 8787 --bind 127.0.0.1
+```
+
+Then open:
+
+```text
+http://127.0.0.1:8787/dashboard/
+```
+
+The dashboard reads:
+
+- `macro_live_signal_adjusted.csv`
+- `macro_signal_performance.csv`
+- `macro_signal_trust_weights.csv`
+- `macro_pipeline_status.json` when the runner has created it locally
+
+Views:
+
+- Signals: live catalyst table, final probabilities, filters, and detail panel.
+- Performance: accuracy and whipsaw summaries.
+- Trust: feedback weights used by the adjusted signal contract.
+
+## 8. Archived Extras
 
 The `extra/` folder contains side tools and old generated artifacts that are not
 part of the current catalyst engine workflow. Examples include:
@@ -180,9 +290,20 @@ Those files are kept for reference, not deleted.
 | `fetch_nq_yahoo.py` | Dynamic Yahoo market-data downloader. |
 | `catalyser_news.py` | Catalyst calendar, news, live macro release watcher, probability scoring. |
 | `macro_reaction_study.py` | Historical event-to-price reaction study and live-release calibration. |
+| `macro_signal_performance.py` | Post-release prediction grading and performance summaries. |
+| `macro_signal_trust.py` | Performance feedback layer for trust-adjusted live probabilities. |
+| `macro_pipeline_runner.py` | 24/7 orchestration layer that calls the separate modules in order. |
+| `dashboard/index.html` | Local browser dashboard for adjusted macro signals. |
+| `dashboard/app.js` | CSV loader, filters, tables, and detail panel for the dashboard. |
+| `dashboard/styles.css` | Dashboard visual system and responsive layout. |
 | `macro_live_signal.csv` | Compact UI-ready live signal contract. |
+| `macro_live_signal_adjusted.csv` | UI-ready trust-adjusted live signal contract. |
 | `macro_reaction_profiles_5m.csv` | Smoothed historical reaction probabilities. |
+| `macro_reaction_profiles_60m.csv` | Deeper 2024-2026 hourly reaction probabilities. |
 | `macro_event_clusters_5m_60d.csv` | Same-timestamp macro release clusters. |
+| `macro_signal_grades.csv` | Per-signal outcome grade rows. |
+| `macro_signal_performance.csv` | Dashboard-ready model accuracy summary. |
+| `macro_signal_trust_weights.csv` | Accuracy/whipsaw-based trust weights used by `macro_signal_trust.py`. |
 | `extra/` | Archived side tools, private exports, and old generated artifacts. |
 | `requirements.txt` | Python dependencies. |
 
@@ -205,6 +326,16 @@ As of the latest local run:
   days of 1m granularity are available per request.
 - `macro_reaction_study.py` clustered 51 TradingView U.S. macro event rows into
   37 release moments and produced smoothed 5-minute reaction profiles.
+- The deeper 60-minute study fetched 381 high-importance TradingView event rows,
+  clustered them into 282 release moments, and produced 85 profile rows.
+- `macro_signal_performance.py` produced 24 graded signal/source rows and 51
+  performance summary rows from the current 1m, 5m, and 60m reaction sets.
+- `macro_signal_trust.py` produced 51 trust-weight rows and 14 trust-adjusted
+  live signal rows.
+- `macro_pipeline_runner.py --dry-run` verified the default stage order:
+  live fetch, calibration, and trust adjustment.
+- `dashboard/` serves from the workspace root and loads the adjusted signal,
+  performance, and trust CSVs over HTTP.
 
 ## GitHub Upload Checklist
 

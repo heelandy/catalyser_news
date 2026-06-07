@@ -279,10 +279,12 @@ def release_direction_rule(title: str, category: str = ""):
         return -1.0, "Higher inflation is usually bearish for U.S. stocks because it can lift yields and reduce rate-cut odds."
     if any(k in text for k in ("fomc", "interest rate", "fed funds", "rate decision", "dot plot")):
         return -1.0, "A higher-rate or more hawkish surprise is usually bearish for equities."
-    if any(k in text for k in ("unemployment", "jobless", "claims", "layoffs")):
-        return -0.35, "Higher unemployment/claims are mixed: dovish for rates, but bearish if growth fear dominates."
+    if any(k in text for k in ("jobless", "claims")):
+        return -0.7, "Higher jobless claims have recently behaved more like growth stress than a dovish-rate signal for NQ."
     if any(k in text for k in ("non farm", "nonfarm", "payroll", "employment change", "employment report", "adp", "national employment", "jolts", "job openings")):
         return -0.6, "Stronger jobs can pressure rate-sensitive stocks if the market reads it as higher-for-longer Fed policy."
+    if any(k in text for k in ("unemployment", "layoffs")):
+        return -0.35, "Higher unemployment is mixed: dovish for rates, but bearish if growth fear dominates."
     if any(k in text for k in ("pmi", "ism", "gdp", "retail sales", "industrial production", "consumer confidence")):
         return 0.7, "Stronger growth data is usually risk-on unless it also renews inflation or Fed pressure."
     return 0.0, "No reliable one-number direction rule; treat this as a volatility catalyst and wait for price confirmation."
@@ -343,6 +345,10 @@ def surprise_scale(title: str, category: str, unit: str, baseline):
     unit = (unit or "").strip()
     if any(k in text for k in ("non farm", "nonfarm", "payroll")):
         return 50_000.0
+    if any(k in text for k in ("adp", "national employment")):
+        return 50_000.0
+    if any(k in text for k in ("jolts", "job openings")):
+        return 100_000.0
     if any(k in text for k in ("unemployment", "jobless", "claims")):
         return 0.2 if unit == "%" else 25_000.0
     if any(k in text for k in ("cpi", "ppi", "pce", "inflation")):

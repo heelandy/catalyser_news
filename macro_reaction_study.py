@@ -51,7 +51,9 @@ EVENT_FAMILY_PRIORITY = {
     "pce": 90,
     "ppi": 88,
     "nonfarm_payrolls": 84,
+    "adp_employment": 83,
     "unemployment_rate": 82,
+    "jolts_job_openings": 80,
     "jobless_claims": 78,
     "labor": 76,
     "ism_pmi": 72,
@@ -183,6 +185,10 @@ def event_family(title: str, category: str = "") -> str:
         return "pce"
     if "non farm" in text or "nonfarm" in text or "payroll" in text:
         return "nonfarm_payrolls"
+    if "adp" in text or "national employment" in text:
+        return "adp_employment"
+    if "jolts" in text or "job openings" in text:
+        return "jolts_job_openings"
     if "unemployment" in text:
         return "unemployment_rate"
     if "jobless" in text or "claims" in text:
@@ -214,9 +220,11 @@ def release_direction_rule(title: str, category: str = "") -> tuple[float, str, 
         return -1.0, "higher_is_bearish", "Higher inflation is usually bearish for NQ because it can lift yields and reduce rate-cut odds."
     if any(k in text for k in ("fomc", "interest rate", "fed funds", "rate decision", "dot plot")):
         return -1.0, "higher_is_bearish", "Higher rates or hawkish guidance are usually bearish for rate-sensitive equities."
+    if any(k in text for k in ("jobless", "claims")):
+        return -0.7, "higher_is_bearish", "Higher jobless claims have recently behaved more like growth stress than a dovish-rate signal for NQ."
     if any(k in text for k in ("non farm", "nonfarm", "payroll", "employment change", "employment report", "adp", "national employment", "jolts", "job openings")):
         return -0.6, "higher_is_mixed_bearish", "Stronger payrolls can pressure NQ when the market reads them as higher-for-longer Fed policy."
-    if any(k in text for k in ("unemployment", "jobless", "claims", "layoffs")):
+    if any(k in text for k in ("unemployment", "layoffs")):
         return -0.35, "higher_is_mixed_bearish", "Higher unemployment or claims are mixed: dovish for rates, but bearish if growth fear dominates."
     if any(k in text for k in ("pmi", "ism", "gdp", "retail sales", "industrial production", "consumer confidence", "home sales")):
         return 0.7, "higher_is_bullish", "Stronger growth data is usually risk-on unless it renews inflation or Fed pressure."

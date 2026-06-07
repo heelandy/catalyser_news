@@ -1,5 +1,6 @@
 __pycache__/
 *.py[cod]
+extra/
 
 .venv/
 venv/
@@ -9,6 +10,7 @@ env/
 .env.*
 *.log
 *_github_upload.zip
+macro_pipeline_status.json
 
 # One-off local verification outputs.
 catalysts_market_bias_test.csv

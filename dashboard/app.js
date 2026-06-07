@@ -1,0 +1,512 @@
+const DATA_PATHS = {
+  signals: "../macro_live_signal_adjusted.csv",
+  performance: "../macro_signal_performance.csv",
+  trust: "../macro_signal_trust_weights.csv",
+  status: "../macro_pipeline_status.json",
+};
+
+const state = {
+  signals: [],
+  performance: [],
+  trust: [],
+  status: null,
+  activeTab: "signals",
+  selectedId: "",
+  sortKey: "release_time",
+  sortDir: "asc",
+  filters: {
+    search: "",
+    category: "all",
+    status: "all",
+    direction: "all",
+  },
+};
+
+const els = {
+  dataStamp: document.querySelector("#dataStamp"),
+  reloadBtn: document.querySelector("#reloadBtn"),
+  metrics: document.querySelector("#metrics"),
+  searchInput: document.querySelector("#searchInput"),
+  categorySelect: document.querySelector("#categorySelect"),
+  signalFilters: document.querySelector("#signalFilters"),
+  signalsBody: document.querySelector("#signalsBody"),
+  performanceBody: document.querySelector("#performanceBody"),
+  trustBody: document.querySelector("#trustBody"),
+  detailPanel: document.querySelector("#detailPanel"),
+  tabs: Array.from(document.querySelectorAll(".tab")),
+  views: Array.from(document.querySelectorAll(".view")),
+  segments: Array.from(document.querySelectorAll(".segment")),
+  sortableHeaders: Array.from(document.querySelectorAll("th[data-sort]")),
+};
+
+function parseCsv(text) {
+  const rows = [];
+  let row = [];
+  let value = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i += 1) {
+    const char = text[i];
+    const next = text[i + 1];
+
+    if (char === '"' && inQuotes && next === '"') {
+      value += '"';
+      i += 1;
+    } else if (char === '"') {
+      inQuotes = !inQuotes;
+    } else if (char === "," && !inQuotes) {
+      row.push(value);
+      value = "";
+    } else if ((char === "\n" || char === "\r") && !inQuotes) {
+      if (char === "\r" && next === "\n") {
+        i += 1;
+      }
+      row.push(value);
+      if (row.some((cell) => cell !== "")) {
+        rows.push(row);
+      }
+      row = [];
+      value = "";
+    } else {
+      value += char;
+    }
+  }
+
+  if (value || row.length) {
+    row.push(value);
+    rows.push(row);
+  }
+
+  if (!rows.length) {
+    return [];
+  }
+
+  const headers = rows[0].map((h) => h.trim());
+  return rows.slice(1).map((cells) => {
+    const out = {};
+    headers.forEach((header, index) => {
+      out[header] = cells[index] || "";
+    });
+    return out;
+  });
+}
+
+async function fetchCsv(path) {
+  const response = await fetch(`${path}?v=${Date.now()}`);
+  if (!response.ok) {
+    throw new Error(`${path} returned ${response.status}`);
+  }
+  return parseCsv(await response.text());
+}
+
+async function fetchJson(path) {
+  const response = await fetch(`${path}?v=${Date.now()}`);
+  if (!response.ok) {
+    return null;
+  }
+  return response.json();
+}
+
+function numberValue(value, fallback = NaN) {
+  if (value === null || value === undefined || value === "") {
+    return fallback;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function percent(value, digits = 1) {
+  const n = numberValue(value);
+  if (!Number.isFinite(n)) {
+    return "--";
+  }
+  return `${(n * 100).toFixed(digits)}%`;
+}
+
+function points(value, digits = 1) {
+  const n = numberValue(value);
+  if (!Number.isFinite(n)) {
+    return "--";
+  }
+  return n.toFixed(digits);
+}
+
+function clean(value, fallback = "--") {
+  const text = String(value || "").trim();
+  return text || fallback;
+}
+
+function formatTime(value) {
+  const text = clean(value, "");
+  if (!text) {
+    return "--";
+  }
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+  if (!match) {
+    return text;
+  }
+  const [, year, month, day, hour, minute] = match;
+  return `${month}/${day} ${hour}:${minute}`;
+}
+
+function titleCase(value, fallback = "--") {
+  return clean(value, fallback)
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function signalId(row, index) {
+  return `${row.release_time || "time"}::${row.title || "title"}::${index}`;
+}
+
+function normalizeSignals(rows) {
+  return rows.map((row, index) => {
+    const direction = clean(row.final_expected_direction || row.trust_adjusted_direction || row.expected_direction, "mixed").toLowerCase();
+    const status = clean(row.release_status, "unknown").toLowerCase();
+    const bull = numberValue(row.final_bullish_probability || row.trust_adjusted_bullish_probability || row.calibrated_bullish_probability, 0.5);
+    const bear = numberValue(row.final_bearish_probability || row.trust_adjusted_bearish_probability || row.calibrated_bearish_probability, 1 - bull);
+    const confidence = numberValue(row.final_confidence || row.trust_adjusted_confidence || row.confidence, 0);
+    return {
+      ...row,
+      id: signalId(row, index),
+      direction,
+      status,
+      bull,
+      bear,
+      confidence,
+      warningText: clean(row.final_warning || row.trust_warning || row.warning, ""),
+      searchText: [
+        row.title,
+        row.event_family,
+        row.catalyst_category,
+        row.source,
+        row.market_bias_side,
+        row.final_warning,
+        row.trust_warning,
+      ].join(" ").toLowerCase(),
+    };
+  });
+}
+
+function setDataStamp() {
+  const count = state.signals.length;
+  const statusText = state.status && state.status.finished_at
+    ? `status ${state.status.finished_at}`
+    : `loaded ${new Date().toLocaleTimeString()}`;
+  els.dataStamp.textContent = `${count} signals, ${statusText}`;
+}
+
+function renderMetrics() {
+  const total = state.signals.length;
+  const waiting = state.signals.filter((row) => row.status === "waiting_actual").length;
+  const released = state.signals.filter((row) => row.status === "released").length;
+  const bearish = state.signals.filter((row) => row.direction === "bearish").length;
+  const bullish = state.signals.filter((row) => row.direction === "bullish").length;
+  const avgConfidence = total
+    ? state.signals.reduce((sum, row) => sum + row.confidence, 0) / total
+    : 0;
+  const next = state.signals
+    .filter((row) => row.status !== "released")
+    .sort((a, b) => String(a.release_time).localeCompare(String(b.release_time)))[0];
+
+  const metrics = [
+    { label: "Signals", value: total, note: `${released} released, ${waiting} waiting` },
+    { label: "Bullish", value: bullish, note: "final direction" },
+    { label: "Bearish", value: bearish, note: "final direction" },
+    { label: "Avg Confidence", value: percent(avgConfidence, 0), note: "trust adjusted" },
+    { label: "Next", value: next ? formatTime(next.release_time) : "--", note: next ? clean(next.title) : "No pending release" },
+  ];
+
+  els.metrics.innerHTML = metrics
+    .map((item) => `
+      <article class="metric">
+        <span>${item.label}</span>
+        <strong>${item.value}</strong>
+        <em title="${item.note}">${item.note}</em>
+      </article>
+    `)
+    .join("");
+}
+
+function renderCategories() {
+  const categories = Array.from(new Set(state.signals.map((row) => clean(row.catalyst_category, "")).filter(Boolean))).sort();
+  const current = state.filters.category;
+  els.categorySelect.innerHTML = [
+    '<option value="all">All categories</option>',
+    ...categories.map((category) => `<option value="${escapeHtml(category)}">${escapeHtml(titleCase(category))}</option>`),
+  ].join("");
+  els.categorySelect.value = categories.includes(current) ? current : "all";
+  state.filters.category = els.categorySelect.value;
+}
+
+function filteredSignals() {
+  const query = state.filters.search.trim().toLowerCase();
+  return state.signals.filter((row) => {
+    if (query && !row.searchText.includes(query)) {
+      return false;
+    }
+    if (state.filters.category !== "all" && clean(row.catalyst_category, "") !== state.filters.category) {
+      return false;
+    }
+    if (state.filters.status !== "all" && row.status !== state.filters.status) {
+      return false;
+    }
+    if (state.filters.direction !== "all" && row.direction !== state.filters.direction) {
+      return false;
+    }
+    return true;
+  });
+}
+
+function sortRows(rows) {
+  const key = state.sortKey;
+  const dir = state.sortDir === "asc" ? 1 : -1;
+  return [...rows].sort((a, b) => {
+    const numericKeys = new Set(["final_bullish_probability", "final_confidence", "trust_weight"]);
+    if (numericKeys.has(key)) {
+      return (numberValue(a[key], 0) - numberValue(b[key], 0)) * dir;
+    }
+    return String(a[key] || "").localeCompare(String(b[key] || "")) * dir;
+  });
+}
+
+function directionBadge(direction) {
+  return `<span class="badge ${escapeHtml(direction)}">${escapeHtml(titleCase(direction))}</span>`;
+}
+
+function statusBadge(status) {
+  const cls = status === "waiting_actual" ? "waiting" : status === "released" ? "neutral" : "mixed";
+  return `<span class="badge ${cls}">${escapeHtml(titleCase(status))}</span>`;
+}
+
+function probabilityCell(row) {
+  const value = Math.max(0, Math.min(100, row.bull * 100));
+  const barClass = row.direction === "bearish" ? "bar bear" : "bar";
+  return `
+    <div class="prob">
+      <span>${percent(row.bull, 0)}</span>
+      <div class="${barClass}"><span style="--value:${value}%"></span></div>
+    </div>
+  `;
+}
+
+function renderSignals() {
+  const rows = sortRows(filteredSignals());
+  if (!state.selectedId && rows.length) {
+    state.selectedId = rows[0].id;
+  }
+
+  els.signalsBody.innerHTML = rows.length
+    ? rows.map((row) => `
+      <tr data-id="${escapeHtml(row.id)}" class="${row.id === state.selectedId ? "selected" : ""}">
+        <td>${formatTime(row.release_time)}</td>
+        <td>
+          <div class="title-cell">
+            <strong title="${escapeHtml(clean(row.title))}">${escapeHtml(clean(row.title))}</strong>
+            <span>${escapeHtml(titleCase(row.event_family))} / ${escapeHtml(titleCase(row.catalyst_category))}</span>
+          </div>
+        </td>
+        <td>${directionBadge(row.direction)}</td>
+        <td>${probabilityCell(row)}</td>
+        <td>${percent(row.confidence, 0)}</td>
+        <td>${points(row.trust_weight, 2)}</td>
+        <td>${statusBadge(row.status)}</td>
+      </tr>
+    `).join("")
+    : '<tr><td colspan="7"><div class="empty">No matching signals</div></td></tr>';
+
+  renderDetail();
+}
+
+function detailDatum(label, value) {
+  return `
+    <div class="datum">
+      <span>${label}</span>
+      <strong>${escapeHtml(clean(value))}</strong>
+    </div>
+  `;
+}
+
+function renderDetail() {
+  const row = state.signals.find((item) => item.id === state.selectedId) || filteredSignals()[0];
+  if (!row) {
+    els.detailPanel.innerHTML = '<div class="empty">No signal selected</div>';
+    return;
+  }
+
+  state.selectedId = row.id;
+  const warning = row.warningText ? `<div class="note">${escapeHtml(row.warningText)}</div>` : "";
+  const ruleNote = clean(row.market_rule_note, "");
+  const trustNote = clean(row.trust_note, "");
+
+  els.detailPanel.innerHTML = `
+    <div class="detail-head">
+      <div class="pill-row">
+        ${directionBadge(row.direction)}
+        ${statusBadge(row.status)}
+        <span class="pill ${escapeHtml(row.market_bias_label || row.direction)}">${escapeHtml(titleCase(row.market_bias_side))}</span>
+      </div>
+      <h2>${escapeHtml(clean(row.title))}</h2>
+      <div class="prob">
+        <span>${percent(row.bull, 1)}</span>
+        <div class="${row.direction === "bearish" ? "bar bear" : "bar"}"><span style="--value:${Math.max(0, Math.min(100, row.bull * 100))}%"></span></div>
+      </div>
+    </div>
+    <div class="detail-grid">
+      ${detailDatum("Time", formatTime(row.release_time))}
+      ${detailDatum("Confidence", `${percent(row.confidence, 0)} ${titleCase(row.final_confidence_label || row.trust_adjusted_confidence_label || row.confidence_label)}`)}
+      ${detailDatum("Actual", row.actual)}
+      ${detailDatum("Forecast", row.forecast)}
+      ${detailDatum("Previous", row.previous)}
+      ${detailDatum("Surprise", points(row.surprise, 2))}
+      ${detailDatum("Trust Weight", points(row.trust_weight, 3))}
+      ${detailDatum("Trust Samples", row.trust_sample_size)}
+    </div>
+    ${ruleNote ? `<div class="note">${escapeHtml(ruleNote)}</div>` : ""}
+    ${trustNote ? `<div class="note">${escapeHtml(trustNote)}</div>` : ""}
+    ${warning}
+  `;
+}
+
+function renderPerformance() {
+  const preferred = state.performance
+    .filter((row) => ["overall", "event_family_market_bias", "catalyst_category", "market_bias_side"].includes(row.group_type))
+    .sort((a, b) => numberValue(b.sample_size, 0) - numberValue(a.sample_size, 0));
+
+  els.performanceBody.innerHTML = preferred.length
+    ? preferred.map((row) => `
+      <tr>
+        <td>${escapeHtml(titleCase(row.group_type))}</td>
+        <td>${escapeHtml(titleCase(row.event_family))}</td>
+        <td>${escapeHtml(titleCase(row.catalyst_category))}</td>
+        <td>${escapeHtml(titleCase(row.market_bias_side))}</td>
+        <td>${escapeHtml(clean(row.sample_size))}</td>
+        <td>${percent(row.primary_accuracy, 0)}</td>
+        <td>${percent(row.whipsaw_rate, 0)}</td>
+        <td>${points(row.avg_return_60m_pts || row.avg_primary_return_pts, 1)}</td>
+      </tr>
+    `).join("")
+    : '<tr><td colspan="8"><div class="empty">No performance rows loaded</div></td></tr>';
+}
+
+function renderTrust() {
+  const rows = state.trust
+    .filter((row) => row.usable_for_live_signal === "True" || row.usable_for_live_signal === "true" || row.usable_for_live_signal === true)
+    .sort((a, b) => numberValue(a.trust_weight, 0) - numberValue(b.trust_weight, 0));
+
+  els.trustBody.innerHTML = rows.length
+    ? rows.map((row) => `
+      <tr>
+        <td>${escapeHtml(titleCase(row.group_type))}</td>
+        <td>${escapeHtml(titleCase(row.event_family))}</td>
+        <td>${escapeHtml(titleCase(row.market_bias_side))}</td>
+        <td>${escapeHtml(clean(row.sample_size))}</td>
+        <td>${percent(row.smoothed_primary_accuracy, 0)}</td>
+        <td>${percent(row.whipsaw_rate, 0)}</td>
+        <td>${points(row.trust_weight, 2)}</td>
+        <td>${escapeHtml(titleCase(row.trust_label))}</td>
+      </tr>
+    `).join("")
+    : '<tr><td colspan="8"><div class="empty">No trust rows loaded</div></td></tr>';
+}
+
+function renderAll() {
+  setDataStamp();
+  renderMetrics();
+  renderCategories();
+  renderSignals();
+  renderPerformance();
+  renderTrust();
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+async function loadAll() {
+  els.dataStamp.textContent = "Loading data";
+  try {
+    const [signals, performance, trust, status] = await Promise.all([
+      fetchCsv(DATA_PATHS.signals),
+      fetchCsv(DATA_PATHS.performance),
+      fetchCsv(DATA_PATHS.trust),
+      fetchJson(DATA_PATHS.status).catch(() => null),
+    ]);
+    state.signals = normalizeSignals(signals);
+    state.performance = performance;
+    state.trust = trust;
+    state.status = status;
+    state.selectedId = state.signals[0]?.id || "";
+    renderAll();
+  } catch (error) {
+    els.dataStamp.textContent = `Data load failed: ${error.message}`;
+    els.signalsBody.innerHTML = '<tr><td colspan="7"><div class="empty">Unable to load dashboard data</div></td></tr>';
+    els.detailPanel.innerHTML = '<div class="empty">CSV files unavailable</div>';
+  }
+}
+
+function setActiveTab(tab) {
+  state.activeTab = tab;
+  els.tabs.forEach((button) => button.classList.toggle("active", button.dataset.tab === tab));
+  els.views.forEach((view) => view.classList.toggle("active", view.id === `${tab}View`));
+  els.signalFilters.style.display = tab === "signals" ? "" : "none";
+}
+
+function bindEvents() {
+  els.reloadBtn.addEventListener("click", loadAll);
+
+  els.tabs.forEach((button) => {
+    button.addEventListener("click", () => setActiveTab(button.dataset.tab));
+  });
+
+  els.searchInput.addEventListener("input", (event) => {
+    state.filters.search = event.target.value;
+    renderSignals();
+  });
+
+  els.categorySelect.addEventListener("change", (event) => {
+    state.filters.category = event.target.value;
+    renderSignals();
+  });
+
+  els.segments.forEach((button) => {
+    button.addEventListener("click", () => {
+      const key = button.dataset.filter;
+      state.filters[key] = button.dataset.value;
+      els.segments
+        .filter((item) => item.dataset.filter === key)
+        .forEach((item) => item.classList.toggle("active", item === button));
+      renderSignals();
+    });
+  });
+
+  els.signalsBody.addEventListener("click", (event) => {
+    const row = event.target.closest("tr[data-id]");
+    if (!row) {
+      return;
+    }
+    state.selectedId = row.dataset.id;
+    renderSignals();
+  });
+
+  els.sortableHeaders.forEach((header) => {
+    header.addEventListener("click", () => {
+      const nextKey = header.dataset.sort;
+      if (state.sortKey === nextKey) {
+        state.sortDir = state.sortDir === "asc" ? "desc" : "asc";
+      } else {
+        state.sortKey = nextKey;
+        state.sortDir = nextKey === "release_time" ? "asc" : "desc";
+      }
+      renderSignals();
+    });
+  });
+}
+
+bindEvents();
+loadAll();

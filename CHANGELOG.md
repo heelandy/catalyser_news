@@ -1,7 +1,51 @@
 # Changelog
 
+## 0.5.0 - Local Dashboard
+
+- Added `dashboard/index.html`, `dashboard/styles.css`, and `dashboard/app.js`.
+- Added a local operational dashboard for adjusted live signals, performance
+  summaries, and trust weights.
+- Added signal search, category/status/direction filters, sortable signal table,
+  and a detail panel using the `final_*` signal fields.
+- Added dashboard documentation and GitHub upload allowlist entries.
+
+## 0.4.0 - Pipeline Runner
+
+- Added `macro_pipeline_runner.py` as a separate orchestration layer for live
+  operation.
+- Added one-cycle and `--run-forever` modes for the live fetch, calibration, and
+  trust-adjustment chain.
+- Added optional Yahoo market-data refresh, release-time polling,
+  post-release performance refresh, status JSON, and runtime logging.
+- Added `--dry-run` support so the stage order can be verified without touching
+  live data files.
+
+## 0.3.0 - Trust-Adjusted Live Signals
+
+- Added `macro_signal_trust.py` as a separate feedback calibration layer.
+- Added `macro_signal_trust_weights.csv` from accuracy, whipsaw, and sample-size
+  history in `macro_signal_performance.csv`.
+- Added `macro_live_signal_adjusted.csv` with original probabilities preserved
+  and UI-ready `final_*` fields appended.
+- Added trust warnings for low-sample, whipsaw-heavy, discounted, and faded
+  signal groups.
+- Capped boosts from broad fallback groups so generic bias history cannot
+  over-strengthen unrelated event types.
+- Confirmed the current feedback run boosts clean PMI signals while pulling weak
+  labor and whippy inflation signals closer to neutral.
+
 ## 0.2.0 - Clustered Signals and Live Contract
 
+- Added `macro_signal_performance.py` for post-release outcome grading.
+- Added `macro_signal_grades.csv` and `macro_signal_performance.csv`.
+- Added deeper 60-minute NQ reaction study from 2024-01-12 through 2026-06-05.
+- Added 60-minute historical outputs:
+  - `macro_events_history_2024_2026_high.csv`
+  - `macro_event_clusters_60m_2024_2026.csv`
+  - `macro_reactions_60m.csv`
+  - `macro_reaction_profiles_60m.csv`
+- Split ADP and JOLTS into more specific event families.
+- Tightened jobless-claims rule after deeper history showed higher claims have recently behaved more like growth stress for NQ.
 - Added same-timestamp release clustering so CPI/core CPI or payrolls/unemployment do not double-count the same NQ price move.
 - Added `event_cluster_id`, `event_count`, `cluster_titles`, `cluster_event_families`, `cluster_market_bias_sides`, and primary-event fields.
 - Added Bayesian-smoothed probabilities:
@@ -35,7 +79,6 @@
 
 ## Next
 
-- Cluster simultaneous releases so one price move is not double-counted.
-- Add smoothed probabilities for small sample sizes.
-- Expand Yahoo pulls dynamically where the provider allows it.
-- Emit a compact `macro_live_signal.csv` contract for the future UI.
+- Add richer historical futures data when Yahoo's intraday limits are not enough.
+- Add alerting around runner failures and release-time state changes.
+- Add dashboard charts for event-family performance over time.
