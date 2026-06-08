@@ -1,115 +1,115 @@
 {
   "duplicate_timestamps": 0,
-  "end": "2026-06-05 20:00:00",
+  "end": "2026-06-05 20:55:00",
   "events_file": "macro_releases.csv",
   "interval_seconds": {
-    "median": 3600.0,
-    "mode": 3600.0,
-    "p95": 3600.0
+    "median": 300.0,
+    "mode": 300.0,
+    "p95": 300.0
   },
   "large_gaps": [
     {
       "date": "2014-06-15 22:00:00",
-      "gap_seconds": 349200.0,
-      "previous_date": "2014-06-11 21:00:00"
+      "gap_seconds": 348600.0,
+      "previous_date": "2014-06-11 21:10:00"
     },
     {
-      "date": "2011-12-27 11:00:00",
-      "gap_seconds": 309600.0,
-      "previous_date": "2011-12-23 21:00:00"
-    },
-    {
-      "date": "2014-09-26 11:00:00",
-      "gap_seconds": 309600.0,
-      "previous_date": "2014-09-22 21:00:00"
+      "date": "2014-09-26 11:20:00",
+      "gap_seconds": 310200.0,
+      "previous_date": "2014-09-22 21:10:00"
     },
     {
       "date": "2012-01-03 11:00:00",
-      "gap_seconds": 309600.0,
-      "previous_date": "2011-12-30 21:00:00"
+      "gap_seconds": 309000.0,
+      "previous_date": "2011-12-30 21:10:00"
+    },
+    {
+      "date": "2011-12-27 11:00:00",
+      "gap_seconds": 309000.0,
+      "previous_date": "2011-12-23 21:10:00"
     },
     {
       "date": "2020-12-27 23:00:00",
-      "gap_seconds": 277200.0,
-      "previous_date": "2020-12-24 18:00:00"
+      "gap_seconds": 276600.0,
+      "previous_date": "2020-12-24 18:10:00"
     },
     {
       "date": "2015-12-27 23:00:00",
-      "gap_seconds": 277200.0,
-      "previous_date": "2015-12-24 18:00:00"
-    },
-    {
-      "date": "2010-12-26 23:00:00",
-      "gap_seconds": 266400.0,
-      "previous_date": "2010-12-23 21:00:00"
-    },
-    {
-      "date": "2020-04-12 22:00:00",
-      "gap_seconds": 266400.0,
-      "previous_date": "2020-04-09 20:00:00"
-    },
-    {
-      "date": "2019-04-21 22:00:00",
-      "gap_seconds": 266400.0,
-      "previous_date": "2019-04-18 20:00:00"
-    },
-    {
-      "date": "2018-04-01 22:00:00",
-      "gap_seconds": 266400.0,
-      "previous_date": "2018-03-29 20:00:00"
-    },
-    {
-      "date": "2016-12-26 23:00:00",
-      "gap_seconds": 266400.0,
-      "previous_date": "2016-12-23 21:00:00"
-    },
-    {
-      "date": "2023-12-25 23:00:00",
-      "gap_seconds": 266400.0,
-      "previous_date": "2023-12-22 21:00:00"
-    },
-    {
-      "date": "2017-01-02 23:00:00",
-      "gap_seconds": 266400.0,
-      "previous_date": "2016-12-30 21:00:00"
-    },
-    {
-      "date": "2024-03-31 22:00:00",
-      "gap_seconds": 266400.0,
-      "previous_date": "2024-03-28 20:00:00"
-    },
-    {
-      "date": "2017-12-25 23:00:00",
-      "gap_seconds": 266400.0,
-      "previous_date": "2017-12-22 21:00:00"
-    },
-    {
-      "date": "2018-01-01 23:00:00",
-      "gap_seconds": 266400.0,
-      "previous_date": "2017-12-29 21:00:00"
+      "gap_seconds": 276600.0,
+      "previous_date": "2015-12-24 18:10:00"
     },
     {
       "date": "2011-04-24 22:00:00",
-      "gap_seconds": 266400.0,
-      "previous_date": "2011-04-21 20:00:00"
+      "gap_seconds": 265800.0,
+      "previous_date": "2011-04-21 20:10:00"
     },
     {
-      "date": "2024-01-01 23:00:00",
-      "gap_seconds": 266400.0,
-      "previous_date": "2023-12-29 21:00:00"
+      "date": "2010-12-26 23:00:00",
+      "gap_seconds": 265800.0,
+      "previous_date": "2010-12-23 21:10:00"
+    },
+    {
+      "date": "2016-03-27 22:00:00",
+      "gap_seconds": 263100.0,
+      "previous_date": "2016-03-24 20:55:00"
     },
     {
       "date": "2022-12-26 23:00:00",
-      "gap_seconds": 266400.0,
-      "previous_date": "2022-12-23 21:00:00"
+      "gap_seconds": 263100.0,
+      "previous_date": "2022-12-23 21:55:00"
     },
     {
-      "date": "2023-01-02 23:00:00",
-      "gap_seconds": 266400.0,
-      "previous_date": "2022-12-30 21:00:00"
+      "date": "2017-01-02 23:00:00",
+      "gap_seconds": 263100.0,
+      "previous_date": "2016-12-30 21:55:00"
+    },
+    {
+      "date": "2021-01-03 23:00:00",
+      "gap_seconds": 263100.0,
+      "previous_date": "2020-12-31 21:55:00"
+    },
+    {
+      "date": "2016-01-03 23:00:00",
+      "gap_seconds": 263100.0,
+      "previous_date": "2015-12-31 21:55:00"
+    },
+    {
+      "date": "2022-04-17 22:00:00",
+      "gap_seconds": 263100.0,
+      "previous_date": "2022-04-14 20:55:00"
+    },
+    {
+      "date": "2021-12-26 23:00:00",
+      "gap_seconds": 263100.0,
+      "previous_date": "2021-12-23 21:55:00"
+    },
+    {
+      "date": "2018-01-01 23:00:00",
+      "gap_seconds": 263100.0,
+      "previous_date": "2017-12-29 21:55:00"
+    },
+    {
+      "date": "2017-12-25 23:00:00",
+      "gap_seconds": 263100.0,
+      "previous_date": "2017-12-22 21:55:00"
+    },
+    {
+      "date": "2018-04-01 22:00:00",
+      "gap_seconds": 263100.0,
+      "previous_date": "2018-03-29 20:55:00"
+    },
+    {
+      "date": "2020-04-12 22:00:00",
+      "gap_seconds": 263100.0,
+      "previous_date": "2020-04-09 20:55:00"
+    },
+    {
+      "date": "2025-04-20 22:00:00",
+      "gap_seconds": 263100.0,
+      "previous_date": "2025-04-17 20:55:00"
     }
   ],
-  "market_data": "NQ_dabento_60min_long_data.csv",
+  "market_data": "NQ_dabento_full_5min_data.csv",
   "null_counts": {
     "adj_close": 0,
     "close": 0,
@@ -131,17 +131,17 @@
     "events_inside_market_range": 8,
     "events_loaded": 14,
     "events_outside_market_range": 6,
-    "market_end": "2026-06-05 20:00:00",
+    "market_end": "2026-06-05 20:55:00",
     "market_start": "2010-06-06 22:00:00",
     "nearest_bar_delay_minutes": {
-      "exact_or_negative_count": 3,
-      "max": 45.0,
-      "median": 22.5,
+      "exact_or_negative_count": 8,
+      "max": 0.0,
+      "median": 0.0,
       "min": 0.0,
-      "within_5_minutes_count": 3
+      "within_5_minutes_count": 8
     }
   },
-  "rows": 95308,
+  "rows": 1122828,
   "start": "2010-06-06 22:00:00",
-  "usable_rows": 95308
+  "usable_rows": 1122828
 }

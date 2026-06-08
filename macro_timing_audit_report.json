@@ -1,20 +1,19 @@
 {
   "alignment_counts": {
     "after_market_data": 6,
-    "aligned_next_bar": 3,
-    "timing_gap": 5
+    "aligned_next_bar": 8
   },
-  "bar_interval_seconds_mode": 3600.0,
+  "bar_interval_seconds_mode": 300.0,
   "event_count": 14,
   "events_file": "macro_releases.csv",
   "in_range_event_count": 8,
-  "market_data": "NQ_dabento_60min_long_data.csv",
-  "market_end": "2026-06-05 20:00:00",
+  "market_data": "NQ_dabento_full_5min_data.csv",
+  "market_end": "2026-06-05 20:55:00",
   "market_start": "2010-06-06 22:00:00",
   "nearest_abs_delay_minutes": {
-    "max": 30.0,
-    "median": 15.0,
-    "p95": 30.0
+    "max": 0.0,
+    "median": 0.0,
+    "p95": 0.0
   },
   "tolerance_minutes": 5.0
 }

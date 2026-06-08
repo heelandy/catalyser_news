@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.0.8 - Full-Range Dabento 1m Source
+
+- Added and normalized `glbx-mdp3-20100606-20260607.ohlcv-1m.csv` into full
+  canonical Dabento 1m, derived 5m, and derived 60m local OHLC files.
+- Verified the full 1m, 5m, and 60m outputs with same-source checks before
+  using them. The 60m output passed against the independent 1h-derived long
+  60m file.
+- Rebuilt full-range Dabento 1m, 5m, and 60m macro reaction/profile artifacts.
+- Switched `market_data_config.json` to use the full 1m profile for live
+  calibration, full 1m/5m/60m reactions for performance grading, and full 5m
+  market data for quality/timing checks.
+- Regenerated current performance, trust, quality, timing, probability
+  validation, and dashboard signal artifacts from the verified full-range
+  Dabento source.
+
 ## 1.0.7 - Dabento Intraday History
 
 - Added `dabento_nq_adapter.py` to normalize Dabento NQ OHLCV exports while

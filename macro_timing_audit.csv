@@ -1,15 +1,15 @@
 release_time,title,event_family,catalyst_category,release_status,previous_bar_time,next_bar_time,minutes_since_previous_bar,minutes_to_next_bar,nearest_abs_delay_minutes,alignment_label
-2026-06-01 14:00:00,ISM Manufacturing PMI,,growth,released,2026-06-01 13:00:00,2026-06-01 14:00:00,60.0,0.0,0.0,aligned_next_bar
-2026-06-02 14:00:00,JOLTS Job Openings,,labor,released,2026-06-02 13:00:00,2026-06-02 14:00:00,60.0,0.0,0.0,aligned_next_bar
-2026-06-03 12:15:00,ADP National Employment,,labor,released,2026-06-03 12:00:00,2026-06-03 13:00:00,15.0,45.0,15.0,timing_gap
-2026-06-03 13:45:00,S&P Global Comp PMI Final,,growth,released,2026-06-03 13:00:00,2026-06-03 14:00:00,45.0,15.0,15.0,timing_gap
-2026-06-03 14:00:00,ISM N-Mfg PMI,,growth,released,2026-06-03 13:00:00,2026-06-03 14:00:00,60.0,0.0,0.0,aligned_next_bar
-2026-06-04 12:30:00,Initial Jobless Clm *,,labor,released,2026-06-04 12:00:00,2026-06-04 13:00:00,30.0,30.0,30.0,timing_gap
-2026-06-05 12:30:00,Non-Farm Payrolls,,labor,released,2026-06-05 12:00:00,2026-06-05 13:00:00,30.0,30.0,30.0,timing_gap
-2026-06-05 12:30:00,Unemployment Rate,,labor,released,2026-06-05 12:00:00,2026-06-05 13:00:00,30.0,30.0,30.0,timing_gap
-2026-06-09 14:00:00,Existing Home Sales,,tax_liquidity,waiting_actual,2026-06-05 20:00:00,,5400.0,,5400.0,after_market_data
-2026-06-10 12:30:00,"CPI MM, SA",,inflation,waiting_actual,2026-06-05 20:00:00,,6750.0,,6750.0,after_market_data
-2026-06-10 12:30:00,"CPI YY, NSA",,inflation,waiting_actual,2026-06-05 20:00:00,,6750.0,,6750.0,after_market_data
-2026-06-10 12:30:00,"Core CPI MM, SA",,inflation,waiting_actual,2026-06-05 20:00:00,,6750.0,,6750.0,after_market_data
-2026-06-10 12:30:00,"Core CPI YY, NSA",,inflation,waiting_actual,2026-06-05 20:00:00,,6750.0,,6750.0,after_market_data
-2026-06-11 12:30:00,Initial Jobless Clm *,,labor,waiting_actual,2026-06-05 20:00:00,,8190.0,,8190.0,after_market_data
+2026-06-01 14:00:00,ISM Manufacturing PMI,,growth,released,2026-06-01 13:55:00,2026-06-01 14:00:00,5.0,0.0,0.0,aligned_next_bar
+2026-06-02 14:00:00,JOLTS Job Openings,,labor,released,2026-06-02 13:55:00,2026-06-02 14:00:00,5.0,0.0,0.0,aligned_next_bar
+2026-06-03 12:15:00,ADP National Employment,,labor,released,2026-06-03 12:10:00,2026-06-03 12:15:00,5.0,0.0,0.0,aligned_next_bar
+2026-06-03 13:45:00,S&P Global Comp PMI Final,,growth,released,2026-06-03 13:40:00,2026-06-03 13:45:00,5.0,0.0,0.0,aligned_next_bar
+2026-06-03 14:00:00,ISM N-Mfg PMI,,growth,released,2026-06-03 13:55:00,2026-06-03 14:00:00,5.0,0.0,0.0,aligned_next_bar
+2026-06-04 12:30:00,Initial Jobless Clm *,,labor,released,2026-06-04 12:25:00,2026-06-04 12:30:00,5.0,0.0,0.0,aligned_next_bar
+2026-06-05 12:30:00,Non-Farm Payrolls,,labor,released,2026-06-05 12:25:00,2026-06-05 12:30:00,5.0,0.0,0.0,aligned_next_bar
+2026-06-05 12:30:00,Unemployment Rate,,labor,released,2026-06-05 12:25:00,2026-06-05 12:30:00,5.0,0.0,0.0,aligned_next_bar
+2026-06-09 14:00:00,Existing Home Sales,,tax_liquidity,waiting_actual,2026-06-05 20:55:00,,5345.0,,5345.0,after_market_data
+2026-06-10 12:30:00,"CPI MM, SA",,inflation,waiting_actual,2026-06-05 20:55:00,,6695.0,,6695.0,after_market_data
+2026-06-10 12:30:00,"CPI YY, NSA",,inflation,waiting_actual,2026-06-05 20:55:00,,6695.0,,6695.0,after_market_data
+2026-06-10 12:30:00,"Core CPI MM, SA",,inflation,waiting_actual,2026-06-05 20:55:00,,6695.0,,6695.0,after_market_data
+2026-06-10 12:30:00,"Core CPI YY, NSA",,inflation,waiting_actual,2026-06-05 20:55:00,,6695.0,,6695.0,after_market_data
+2026-06-11 12:30:00,Initial Jobless Clm *,,labor,waiting_actual,2026-06-05 20:55:00,,8135.0,,8135.0,after_market_data

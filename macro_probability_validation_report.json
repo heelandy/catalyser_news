@@ -5,15 +5,15 @@
     "brier_bullish is lower when probability forecasts are better calibrated"
   ],
   "overall": {
-    "actual_bullish_rate": 0.375,
-    "avg_confidence": 0.36275163647342995,
-    "avg_predicted_bullish_probability": 0.4423807548309179,
-    "avg_probability_edge": 0.15081349033816435,
-    "brier_bullish": 0.24546155091886307,
-    "calibration_error": 0.06738075483091788,
-    "directional_sample_size": 8,
-    "primary_direction_accuracy": 0.25,
-    "sample_size": 8
+    "actual_bullish_rate": 0.5,
+    "avg_confidence": 0.3397534523809524,
+    "avg_predicted_bullish_probability": 0.4441064606227106,
+    "avg_probability_edge": 0.1623620787545789,
+    "brier_bullish": 0.2189451078846498,
+    "calibration_error": -0.055893539377289414,
+    "directional_sample_size": 24,
+    "primary_direction_accuracy": 0.20833333333333334,
+    "sample_size": 24
   },
   "probability_bins": [
     0.0,
@@ -25,5 +25,5 @@
     0.7,
     1.0
   ],
-  "rows_loaded": 8
+  "rows_loaded": 24
 }

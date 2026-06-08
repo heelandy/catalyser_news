@@ -1,16 +1,16 @@
 {
   "default_source": "yahoo",
-  "active_market_data_file": "NQ_dabento_60min_long_data.csv",
-  "active_profiles_file": "macro_reaction_profiles_dabento_1m.csv",
+  "active_market_data_file": "NQ_dabento_full_5min_data.csv",
+  "active_profiles_file": "macro_reaction_profiles_dabento_full_1m.csv",
   "active_reaction_files": [
-    "macro_reactions_dabento_1m.csv",
-    "macro_reactions_dabento_5m.csv",
-    "macro_reactions_dabento_60m_long.csv"
+    "macro_reactions_dabento_full_1m.csv",
+    "macro_reactions_dabento_full_5m.csv",
+    "macro_reactions_dabento_full_60m.csv"
   ],
   "active_reaction_labels": [
-    "dabento_1m",
-    "dabento_5m",
-    "dabento_60m_long"
+    "dabento_full_1m",
+    "dabento_full_5m",
+    "dabento_full_60m"
   ],
   "yahoo": {
     "enabled": true,

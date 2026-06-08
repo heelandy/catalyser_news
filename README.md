@@ -128,18 +128,21 @@ python .\macro_daily_source_compare.py --left-reactions .\macro_reactions_yahoo_
 Normalize Dabento NQ OHLCV exports when those files exist locally:
 
 ```powershell
+python .\dabento_nq_adapter.py --input .\dabento\glbx-mdp3-20100606-20260607.ohlcv-1m.csv --source-interval 1m --out-1m .\NQ_dabento_full_1min_data.csv --out-5m .\NQ_dabento_full_5min_data.csv --out-60m .\NQ_dabento_full_60min_data.csv --roll-map-output .\NQ_dabento_full_roll_map.csv --report-output .\dabento_nq_full_adapter_report.json
 python .\dabento_nq_adapter.py --input .\dabento\glbx-mdp3-20200101-20251231.ohlcv-1m.csv --source-interval 1m
 python .\dabento_nq_adapter.py --input .\dabento\1hour_glbx-mdp3-20100606-20260607.ohlcv-1h.csv --source-interval 1h --out-60m .\NQ_dabento_60min_long_data.csv --roll-map-output .\NQ_dabento_60min_long_roll_map.csv --report-output .\dabento_nq_60min_long_adapter_report.json
 ```
 
-The 1-minute Dabento file creates canonical 1m, 5m, and 60m outputs. The
-1-hour file creates the long 60m output used for current 2026 coverage until a
-deeper 1m/5m file is available.
+The full-range 1-minute Dabento file creates canonical 1m, derived 5m, and
+derived 60m outputs. The separate 1-hour file remains an independent validation
+source for the 60m output.
 
 Build Dabento reaction profiles the same way as Yahoo or Investing.com:
 
 ```powershell
-python .\macro_reaction_study.py --events-file .\macro_events_history_2024_2026_high.csv --market-data .\NQ_dabento_60min_long_data.csv --symbol NQ_DABENTO_60M_LONG --cluster-output .\macro_event_clusters_dabento_60m_long.csv --reaction-output .\macro_reactions_dabento_60m_long.csv --profile-output .\macro_reaction_profiles_dabento_60m_long.csv --min-events 3
+python .\macro_reaction_study.py --events-file .\macro_events_history_2024_2026_high.csv --market-data .\NQ_dabento_full_1min_data.csv --symbol NQ_DABENTO_FULL_1M --cluster-output .\macro_event_clusters_dabento_full_1m.csv --reaction-output .\macro_reactions_dabento_full_1m.csv --profile-output .\macro_reaction_profiles_dabento_full_1m.csv --min-events 3
+python .\macro_reaction_study.py --events-file .\macro_events_history_2024_2026_high.csv --market-data .\NQ_dabento_full_5min_data.csv --symbol NQ_DABENTO_FULL_5M --cluster-output .\macro_event_clusters_dabento_full_5m.csv --reaction-output .\macro_reactions_dabento_full_5m.csv --profile-output .\macro_reaction_profiles_dabento_full_5m.csv --min-events 3
+python .\macro_reaction_study.py --events-file .\macro_events_history_2024_2026_high.csv --market-data .\NQ_dabento_full_60min_data.csv --symbol NQ_DABENTO_FULL_60M --cluster-output .\macro_event_clusters_dabento_full_60m.csv --reaction-output .\macro_reactions_dabento_full_60m.csv --profile-output .\macro_reaction_profiles_dabento_full_60m.csv --min-events 3
 ```
 
 The default command still preserves the older daily NQ files:
@@ -159,11 +162,9 @@ It keeps Yahoo available as the default fetcher with `NQ=F`, leaves
 the verified Dabento artifacts now present in this workspace.
 
 The active live calibration profile is currently
-`macro_reaction_profiles_dabento_1m.csv` for high-resolution release behavior
-where it exists. Performance grading uses the Dabento 1m, derived 5m, and long
-60m reaction files, with `macro_reactions_dabento_60m_long.csv` providing valid
-current 2026 outcomes. Data-quality and timing checks use
-`NQ_dabento_60min_long_data.csv` until deeper 2026 1m/5m data is added.
+`macro_reaction_profiles_dabento_full_1m.csv`. Performance grading uses the
+full Dabento 1m, derived 5m, and derived 60m reaction files. Data-quality and
+timing checks use `NQ_dabento_full_5min_data.csv`.
 
 When Yahoo's intraday limit is not enough, export deeper futures data from a
 broker, charting platform, or paid feed into `external_market_data/`, then
@@ -299,7 +300,7 @@ After releases have occurred and reaction files exist, grade predictions against
 actual NQ movement:
 
 ```powershell
-python .\macro_signal_performance.py --signals .\macro_live_signal.csv --reactions .\macro_reactions_dabento_1m.csv .\macro_reactions_dabento_5m.csv .\macro_reactions_dabento_60m_long.csv --reaction-labels dabento_1m dabento_5m dabento_60m_long --windows-minutes 5,15,30,60,240,390 --primary-window-minutes 60 --grades-output macro_signal_grades.csv --performance-output macro_signal_performance.csv
+python .\macro_signal_performance.py --signals .\macro_live_signal.csv --reactions .\macro_reactions_dabento_full_1m.csv .\macro_reactions_dabento_full_5m.csv .\macro_reactions_dabento_full_60m.csv --reaction-labels dabento_full_1m dabento_full_5m dabento_full_60m --windows-minutes 5,15,30,60,240,390 --primary-window-minutes 60 --grades-output macro_signal_grades.csv --performance-output macro_signal_performance.csv
 ```
 
 Outputs:
@@ -555,8 +556,9 @@ Those files are kept for reference, not deleted.
 | `macro_live_signal_current.csv` | Current dashboard signal contract with daily confirmation applied. |
 | `macro_reaction_profiles_5m.csv` | Smoothed historical reaction probabilities. |
 | `macro_reaction_profiles_60m.csv` | Deeper 2024-2026 hourly reaction probabilities. |
-| `macro_reaction_profiles_dabento_1m.csv` | Active high-resolution Dabento calibration profile where 1m history exists. |
-| `macro_reaction_profiles_dabento_60m_long.csv` | Long Dabento 60m reaction profile for 2010-2026 coverage. |
+| `macro_reaction_profiles_dabento_full_1m.csv` | Active full-range 1m Dabento calibration profile. |
+| `macro_reaction_profiles_dabento_full_5m.csv` | Active full-range derived 5m Dabento reaction profile. |
+| `macro_reaction_profiles_dabento_full_60m.csv` | Active full-range derived 60m Dabento reaction profile. |
 | `macro_event_clusters_5m_60d.csv` | Same-timestamp macro release clusters. |
 | `macro_signal_grades.csv` | Per-signal outcome grade rows. |
 | `macro_signal_performance.csv` | Dashboard-ready model accuracy summary. |
@@ -634,45 +636,41 @@ As of the latest local run:
   only 0.0004 points average absolute return difference.
 - `futures_data_adapter.py` can now normalize deeper external futures exports
   into the same OHLC schema used by the reaction study.
-- `dabento_nq_adapter.py` normalized the 2020-2025 1-minute Dabento file into
-  2,117,365 1m rows, 423,719 derived 5m rows, and 35,432 derived 60m rows.
-  It found no duplicate selected timestamps and no OHLC consistency issues.
-- The long Dabento 1-hour file produced `NQ_dabento_60min_long_data.csv` with
-  95,308 rows from 2010-06-06 22:00 to 2026-06-05 20:00, 4,137 sessions, no
-  duplicate selected timestamps, and clean OHLC structure.
-- The long Dabento 60m file matches the 1m-derived Dabento 60m file on 35,431
-  of 35,432 overlapping hourly bars within 0.25 points, with 0.999996
-  close-delta correlation. The one mismatch is the final partial hour of the
-  2020-2025 1m file.
+- `dabento_nq_adapter.py` normalized the full 2010-2026 1-minute Dabento file
+  into 5,418,395 1m rows, 1,122,828 derived 5m rows, and 95,308 derived 60m
+  rows from 2010-06-06 22:00 to 2026-06-05 20:59. It found no duplicate
+  selected timestamps and no OHLC consistency issues.
+- The full 1m-derived 60m file passed verification against the independent
+  1h-derived long 60m file. The full 1m and full 5m files also passed
+  same-source verification against the full 60m reference before use.
 - Yahoo comparison remains a source/roll sanity check, not a strict approval
-  gate for Dabento. The long 60m file has high movement correlation to Yahoo
-  over the overlap, but OHLC exactness fails around continuous-contract roll and
-  session construction differences.
-- Dabento reaction studies were built for 1m, derived 5m, derived 60m, and long
-  60m. The long 60m study clustered 282 release moments and produced 85 profile
-  rows, with 281 valid 60-minute reaction outcomes.
+  gate for Dabento because continuous-contract roll and session construction can
+  differ across vendors.
+- Full-range Dabento reaction studies were built for 1m, derived 5m, and
+  derived 60m. Each study clustered 282 release moments and produced 85 profile
+  rows.
 - `market_data_config.json` now points live calibration to
-  `macro_reaction_profiles_dabento_1m.csv`, active quality/timing checks to
-  `NQ_dabento_60min_long_data.csv`, and active performance grading to
-  `macro_reactions_dabento_1m.csv`, `macro_reactions_dabento_5m.csv`, and
-  `macro_reactions_dabento_60m_long.csv`.
+  `macro_reaction_profiles_dabento_full_1m.csv`, active quality/timing checks
+  to `NQ_dabento_full_5min_data.csv`, and active performance grading to
+  `macro_reactions_dabento_full_1m.csv`,
+  `macro_reactions_dabento_full_5m.csv`, and
+  `macro_reactions_dabento_full_60m.csv`.
 - `macro_signal_performance.py` now skips out-of-coverage unknown reactions and
-  produced 8 valid graded rows plus 31 performance summary rows from the active
-  Dabento reaction set.
-- `macro_signal_trust.py` produced 31 trust-weight rows and 14 trust-adjusted
+  produced 24 valid graded rows plus 51 performance summary rows from the
+  active full-range Dabento reaction set.
+- `macro_signal_trust.py` produced 51 trust-weight rows and 14 trust-adjusted
   live signal rows.
 - `macro_daily_confirmation.py` now produces `macro_live_signal_current.csv`
   from the trust-adjusted signal plus `macro_reaction_profiles_investing_daily.csv`.
-  The latest run matched all 14 live rows: 5 with-signal confirmations,
-  7 daily leans, and 2 neutral confirmations. The average
-  absolute probability adjustment was 0.0013, with no direction changes.
-- `macro_probability_validation.py` now reports 25.0% primary directional
-  accuracy, 0.245 Brier score, and 37.5% actual bullish rate on the current 8
+  The latest run matched all 14 live rows: 1 with-signal confirmation,
+  11 daily leans, and 2 neutral confirmations. The average absolute probability
+  adjustment was 0.0016, with no direction changes.
+- `macro_probability_validation.py` now reports 20.8% primary directional
+  accuracy, 0.219 Brier score, and 50.0% actual bullish rate on the current 24
   valid graded rows.
-- `macro_data_quality.py` now rates the active long 60m data as watch quality
-  at 80/100. `macro_timing_audit.py` still flags hourly-bar timing limits
-  because some current future releases are after the latest available market bar
-  and 60m bars cannot align to 12:30 releases as tightly as 1m/5m data.
+- `macro_data_quality.py` now rates the active full 5m data as watch quality at
+  80/100. `macro_timing_audit.py` reports 8 aligned next bars and 6 releases
+  after the latest available market data.
 - Confidence scoring now caps weak, low-sample, whipsaw-heavy, fallback, or
   low-reliability signals more strictly before they reach the dashboard.
 - `macro_data_quality.py`, `macro_probability_validation.py`, and

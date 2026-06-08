@@ -8,6 +8,7 @@ NQ_in_*.csv
 1m-2022-2025
 NQ_external_*candidate.csv
 dabento/
+glbx-mdp3-*.csv
 NQ_dabento_*data.csv
 
 .venv/
