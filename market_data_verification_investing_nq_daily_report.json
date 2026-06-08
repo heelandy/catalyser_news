@@ -1,0 +1,346 @@
+{
+  "meta": {
+    "input": "Nasdaq 100 Futures Historical Data.csv",
+    "raw_rows": 1570,
+    "original_columns": [
+      "Date",
+      "Price",
+      "Open",
+      "High",
+      "Low",
+      "Vol.",
+      "Change %"
+    ],
+    "clean_columns": [
+      "date",
+      "price",
+      "open",
+      "high",
+      "low",
+      "vol",
+      "change_%"
+    ],
+    "datetime_column": "date",
+    "open_column": "open",
+    "high_column": "high",
+    "low_column": "low",
+    "close_column": "price",
+    "volume_column": "vol",
+    "input_timezone": "America/New_York",
+    "datetime_parse_failures": 0,
+    "timezone_localization_failures": 0
+  },
+  "quality": {
+    "rows": 1570,
+    "start": "2020-01-01 05:00:00",
+    "end": "2025-12-31 05:00:00",
+    "duplicate_timestamps": 0,
+    "null_counts": {
+      "date": 0,
+      "open": 0,
+      "high": 0,
+      "low": 0,
+      "close": 0,
+      "adj_close": 0,
+      "volume": 42
+    },
+    "ohlc_issues": {
+      "high_less_than_low": 0,
+      "high_below_open_or_close": 1,
+      "low_above_open_or_close": 1
+    },
+    "volume_issues": {
+      "negative_volume": 0,
+      "zero_volume": 0
+    },
+    "tick_size": 0.25,
+    "tick_issues": {
+      "open": 6,
+      "high": 9,
+      "low": 7,
+      "close": 33
+    },
+    "interval_seconds": {
+      "mode": 86400.0,
+      "median": 86400.0,
+      "p95": 259200.0,
+      "top_counts": {
+        "86400.0": 1251,
+        "259200.0": 246,
+        "172800.0": 37,
+        "345600.0": 23,
+        "255600.0": 6,
+        "262800.0": 6
+      }
+    },
+    "large_gaps": [
+      {
+        "previous_date": "2025-04-17 04:00:00",
+        "date": "2025-04-21 04:00:00",
+        "gap_seconds": 345600.0
+      },
+      {
+        "previous_date": "2021-12-23 05:00:00",
+        "date": "2021-12-27 05:00:00",
+        "gap_seconds": 345600.0
+      },
+      {
+        "previous_date": "2022-04-14 04:00:00",
+        "date": "2022-04-18 04:00:00",
+        "gap_seconds": 345600.0
+      },
+      {
+        "previous_date": "2022-09-02 04:00:00",
+        "date": "2022-09-06 04:00:00",
+        "gap_seconds": 345600.0
+      },
+      {
+        "previous_date": "2020-12-24 05:00:00",
+        "date": "2020-12-28 05:00:00",
+        "gap_seconds": 345600.0
+      },
+      {
+        "previous_date": "2025-02-14 05:00:00",
+        "date": "2025-02-18 05:00:00",
+        "gap_seconds": 345600.0
+      },
+      {
+        "previous_date": "2025-01-17 05:00:00",
+        "date": "2025-01-21 05:00:00",
+        "gap_seconds": 345600.0
+      },
+      {
+        "previous_date": "2022-12-23 05:00:00",
+        "date": "2022-12-27 05:00:00",
+        "gap_seconds": 345600.0
+      },
+      {
+        "previous_date": "2022-05-27 04:00:00",
+        "date": "2022-05-31 04:00:00",
+        "gap_seconds": 345600.0
+      },
+      {
+        "previous_date": "2022-06-17 04:00:00",
+        "date": "2022-06-21 04:00:00",
+        "gap_seconds": 345600.0
+      },
+      {
+        "previous_date": "2022-07-01 04:00:00",
+        "date": "2022-07-05 04:00:00",
+        "gap_seconds": 345600.0
+      },
+      {
+        "previous_date": "2023-02-17 05:00:00",
+        "date": "2023-02-21 05:00:00",
+        "gap_seconds": 345600.0
+      },
+      {
+        "previous_date": "2023-05-26 04:00:00",
+        "date": "2023-05-30 04:00:00",
+        "gap_seconds": 345600.0
+      },
+      {
+        "previous_date": "2023-06-16 04:00:00",
+        "date": "2023-06-20 04:00:00",
+        "gap_seconds": 345600.0
+      },
+      {
+        "previous_date": "2022-12-30 05:00:00",
+        "date": "2023-01-03 05:00:00",
+        "gap_seconds": 345600.0
+      },
+      {
+        "previous_date": "2023-01-13 05:00:00",
+        "date": "2023-01-17 05:00:00",
+        "gap_seconds": 345600.0
+      },
+      {
+        "previous_date": "2023-09-01 04:00:00",
+        "date": "2023-09-05 04:00:00",
+        "gap_seconds": 345600.0
+      },
+      {
+        "previous_date": "2023-12-22 05:00:00",
+        "date": "2023-12-26 05:00:00",
+        "gap_seconds": 345600.0
+      },
+      {
+        "previous_date": "2023-12-29 05:00:00",
+        "date": "2024-01-02 05:00:00",
+        "gap_seconds": 345600.0
+      },
+      {
+        "previous_date": "2024-01-12 05:00:00",
+        "date": "2024-01-16 05:00:00",
+        "gap_seconds": 345600.0
+      },
+      {
+        "previous_date": "2024-02-16 05:00:00",
+        "date": "2024-02-20 05:00:00",
+        "gap_seconds": 345600.0
+      },
+      {
+        "previous_date": "2024-03-28 04:00:00",
+        "date": "2024-04-01 04:00:00",
+        "gap_seconds": 345600.0
+      },
+      {
+        "previous_date": "2024-08-30 04:00:00",
+        "date": "2024-09-03 04:00:00",
+        "gap_seconds": 345600.0
+      },
+      {
+        "previous_date": "2022-11-04 04:00:00",
+        "date": "2022-11-07 05:00:00",
+        "gap_seconds": 262800.0
+      },
+      {
+        "previous_date": "2021-11-05 04:00:00",
+        "date": "2021-11-08 05:00:00",
+        "gap_seconds": 262800.0
+      }
+    ],
+    "rows_by_year": {
+      "2020": 264,
+      "2021": 272,
+      "2022": 258,
+      "2023": 251,
+      "2024": 268,
+      "2025": 257
+    },
+    "rows_by_month": {
+      "2020-01": 23,
+      "2020-02": 21,
+      "2020-03": 22,
+      "2020-04": 22,
+      "2020-05": 22,
+      "2020-06": 22,
+      "2020-07": 23,
+      "2020-08": 21,
+      "2020-09": 23,
+      "2020-10": 22,
+      "2020-11": 21,
+      "2020-12": 22,
+      "2021-01": 22,
+      "2021-02": 21,
+      "2021-03": 23,
+      "2021-04": 22,
+      "2021-05": 22,
+      "2021-06": 22,
+      "2021-07": 24,
+      "2021-08": 25,
+      "2021-09": 25,
+      "2021-10": 21,
+      "2021-11": 22,
+      "2021-12": 23,
+      "2022-01": 22,
+      "2022-02": 21,
+      "2022-03": 23,
+      "2022-04": 21,
+      "2022-05": 23,
+      "2022-06": 21,
+      "2022-07": 20,
+      "2022-08": 23,
+      "2022-09": 21,
+      "2022-10": 21,
+      "2022-11": 21,
+      "2022-12": 21,
+      "2023-01": 20,
+      "2023-02": 19,
+      "2023-03": 23,
+      "2023-04": 20,
+      "2023-05": 22,
+      "2023-06": 21,
+      "2023-07": 20,
+      "2023-08": 23,
+      "2023-09": 20,
+      "2023-10": 22,
+      "2023-11": 21,
+      "2023-12": 20,
+      "2024-01": 21,
+      "2024-02": 20,
+      "2024-03": 20,
+      "2024-04": 25,
+      "2024-05": 27,
+      "2024-06": 22,
+      "2024-07": 26,
+      "2024-08": 23,
+      "2024-09": 20,
+      "2024-10": 23,
+      "2024-11": 20,
+      "2024-12": 21,
+      "2025-01": 21,
+      "2025-02": 19,
+      "2025-03": 21,
+      "2025-04": 21,
+      "2025-05": 22,
+      "2025-06": 21,
+      "2025-07": 23,
+      "2025-08": 21,
+      "2025-09": 22,
+      "2025-10": 23,
+      "2025-11": 20,
+      "2025-12": 23
+    }
+  },
+  "intraday_reference": {
+    "status": "not_run",
+    "reason": "missing candidate or reference"
+  },
+  "daily_reference": {
+    "status": "mismatch",
+    "comparison": "candidate_1m_session_daily_vs_reference_daily",
+    "overlap_rows": 1510,
+    "all_ohlc_within_tolerance_rows": 1481,
+    "tolerance_points": 0.25,
+    "max_abs_ohlc_diff": 441.9609375,
+    "diffs": {
+      "open": {
+        "max_abs": 278.0,
+        "mean_abs": 4.1251655629139075,
+        "within_tolerance_count": 1482
+      },
+      "high": {
+        "max_abs": 440.25,
+        "mean_abs": 4.2536818346440395,
+        "within_tolerance_count": 1482
+      },
+      "low": {
+        "max_abs": 261.5,
+        "mean_abs": 4.0812913907284765,
+        "within_tolerance_count": 1482
+      },
+      "close": {
+        "max_abs": 441.9609375,
+        "mean_abs": 4.097872658836917,
+        "within_tolerance_count": 1484
+      }
+    },
+    "close_offset_points": {
+      "mean": 4.038079974648179,
+      "std": 31.87373305082794,
+      "min": -45.140625,
+      "max": 441.9609375
+    },
+    "close_delta_comparison": {
+      "correlation": 0.9962373800932957,
+      "mean_abs_delta_diff": 1.4029658248426051,
+      "max_abs_delta_diff": 441.9609375,
+      "within_1_point_count": 1483,
+      "delta_rows": 1509
+    },
+    "first_overlap": "2020-01-02 00:00:00",
+    "last_overlap": "2025-12-31 00:00:00"
+  },
+  "verdict": {
+    "approved_for_model_use": false,
+    "label": "do_not_use_yet",
+    "blockers": [
+      "OHLC integrity issues: {'high_less_than_low': 0, 'high_below_open_or_close': 1, 'low_above_open_or_close': 1}"
+    ],
+    "warnings": [
+      "Non-tick-aligned prices: {'open': 6, 'high': 9, 'low': 7, 'close': 33}",
+      "Candidate differs from Yahoo daily reference on overlapping sessions"
+    ]
+  }
+}

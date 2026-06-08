@@ -1,0 +1,140 @@
+{
+  "approved_for_active_model": false,
+  "candidate": ".\\Nasdaq 100 Futures Historical Data.csv",
+  "coverage": {
+    "candidate_end": "2025-12-31",
+    "candidate_start": "2020-01-01",
+    "clean_end": "2025-12-31",
+    "clean_start": "2020-01-02"
+  },
+  "diff_summary": {
+    "max_abs_ohlc_diff": 441.9609375,
+    "mean_abs_ohlc_diff": 4.386336855856788,
+    "median_abs_ohlc_diff": 0.0
+  },
+  "keep_unmatched": false,
+  "note": "Generated as a separate source candidate. Active Yahoo-based model is unchanged.",
+  "price_tolerance": 0.25,
+  "reference": ".\\NQ_F_daily.csv",
+  "round_to_tick": true,
+  "rows": {
+    "candidate_rows": 1570,
+    "clean_candidate_rows": 1481,
+    "no_reference_rows": 59,
+    "reference_match_rows": 1481,
+    "reference_mismatch_rows": 28,
+    "reference_overlap_rows": 1510,
+    "rounded_to_tick_rows": 38,
+    "source_ohlc_invalid_rows": 2,
+    "source_tick_issue_rows": 38
+  },
+  "source_name": "investing",
+  "tick_size": 0.25,
+  "top_mismatches": [
+    {
+      "candidate_close": 25574.75,
+      "date": "2025-12-19",
+      "max_abs_ohlc_diff": 441.9609375,
+      "reference_close": 25132.7890625,
+      "source_close": 25574.75
+    },
+    {
+      "candidate_close": 24866.25,
+      "date": "2025-09-19",
+      "max_abs_ohlc_diff": 313.0,
+      "reference_close": 24568.0703125,
+      "source_close": 24866.25
+    },
+    {
+      "candidate_close": 25971.0,
+      "date": "2025-12-11",
+      "max_abs_ohlc_diff": 278.0,
+      "reference_close": 25713.5,
+      "source_close": 25971.0
+    },
+    {
+      "candidate_close": 25469.5,
+      "date": "2025-12-12",
+      "max_abs_ohlc_diff": 270.0,
+      "reference_close": 25213.5,
+      "source_close": 25469.5
+    },
+    {
+      "candidate_close": 25342.75,
+      "date": "2025-12-15",
+      "max_abs_ohlc_diff": 258.0,
+      "reference_close": 25093.25,
+      "source_close": 25342.75
+    },
+    {
+      "candidate_close": 24705.5,
+      "date": "2025-09-18",
+      "max_abs_ohlc_diff": 248.25,
+      "reference_close": 24460.25,
+      "source_close": 24705.5
+    },
+    {
+      "candidate_close": 24248.25,
+      "date": "2025-09-11",
+      "max_abs_ohlc_diff": 247.0,
+      "reference_close": 24017.75,
+      "source_close": 24248.25
+    },
+    {
+      "candidate_close": 22048.25,
+      "date": "2025-06-09",
+      "max_abs_ohlc_diff": 246.25,
+      "reference_close": 21821.5,
+      "source_close": 22048.25
+    },
+    {
+      "candidate_close": 25380.25,
+      "date": "2025-12-16",
+      "max_abs_ohlc_diff": 245.25,
+      "reference_close": 25139.0,
+      "source_close": 25380.25
+    },
+    {
+      "candidate_close": 24108.0,
+      "date": "2025-09-09",
+      "max_abs_ohlc_diff": 243.75,
+      "reference_close": 23874.0,
+      "source_close": 24108.0
+    },
+    {
+      "candidate_close": 24522.25,
+      "date": "2025-09-16",
+      "max_abs_ohlc_diff": 243.75,
+      "reference_close": 24284.0,
+      "source_close": 24522.25
+    },
+    {
+      "candidate_close": 22190.0,
+      "date": "2025-06-10",
+      "max_abs_ohlc_diff": 243.5,
+      "reference_close": 21962.5,
+      "source_close": 22190.0
+    },
+    {
+      "candidate_close": 24465.25,
+      "date": "2025-09-17",
+      "max_abs_ohlc_diff": 242.75,
+      "reference_close": 24222.5,
+      "source_close": 24465.25
+    },
+    {
+      "candidate_close": 24898.75,
+      "date": "2025-12-17",
+      "max_abs_ohlc_diff": 242.5,
+      "reference_close": 24668.75,
+      "source_close": 24898.75
+    },
+    {
+      "candidate_close": 24550.75,
+      "date": "2025-09-15",
+      "max_abs_ohlc_diff": 241.75,
+      "reference_close": 24309.25,
+      "source_close": 24550.75
+    }
+  ]
+}

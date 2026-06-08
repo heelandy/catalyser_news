@@ -4,8 +4,11 @@ extra/
 external_market_data/
 Dataset_*.csv
 NQ_in_*.csv
+*Historical Data.csv
 1m-2022-2025
 NQ_external_*candidate.csv
+dabento/
+NQ_dabento_*data.csv
 
 .venv/
 venv/

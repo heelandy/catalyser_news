@@ -1,5 +1,5 @@
 const DATA_PATHS = {
-  signals: "../macro_live_signal_adjusted.csv",
+  signals: "../macro_live_signal_current.csv",
   performance: "../macro_signal_performance.csv",
   trust: "../macro_signal_trust_weights.csv",
   status: "../macro_pipeline_status.json",
@@ -270,6 +270,8 @@ function normalizeSignals(rows) {
         row.market_bias_side,
         row.final_warning,
         row.trust_warning,
+        row.daily_confirmation_match,
+        row.daily_confirmation_group_key,
       ].join(" ").toLowerCase(),
     };
   });
@@ -603,9 +605,12 @@ function renderDetail() {
       ${detailDatum("Surprise", points(row.surprise, 2))}
       ${detailDatum("Trust Weight", points(row.trust_weight, 3))}
       ${detailDatum("Trust Samples", row.trust_sample_size)}
+      ${detailDatum("Daily Confirm", titleCase(row.daily_confirmation_match))}
+      ${detailDatum("Daily Bull", percent(numberValue(row.daily_confirmation_bullish_probability, 0.5), 0))}
     </div>
     ${ruleNote ? `<div class="note">${escapeHtml(ruleNote)}</div>` : ""}
     ${trustNote ? `<div class="note">${escapeHtml(trustNote)}</div>` : ""}
+    ${row.daily_confirmation_note ? `<div class="note">${escapeHtml(row.daily_confirmation_note)}</div>` : ""}
     ${warning}
   `;
 }

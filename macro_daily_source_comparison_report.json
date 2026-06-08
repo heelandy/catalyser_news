@@ -1,0 +1,165 @@
+{
+  "largest_disagreements": [
+    {
+      "abs_return_diff_pts": 0.0390625,
+      "investing_daily_direction": "bearish",
+      "investing_daily_return_pts": -16.0,
+      "release_time": "2024-06-21 13:45:00",
+      "title": "S&P Global Comp Flash PMI",
+      "yahoo_daily_direction": "bearish",
+      "yahoo_daily_return_pts": -15.9609375
+    },
+    {
+      "abs_return_diff_pts": 0.0390625,
+      "investing_daily_direction": "bearish",
+      "investing_daily_return_pts": -16.0,
+      "release_time": "2024-06-21 14:00:00",
+      "title": "Existing Home Sales",
+      "yahoo_daily_direction": "bearish",
+      "yahoo_daily_return_pts": -15.9609375
+    },
+    {
+      "abs_return_diff_pts": 0.009765625,
+      "investing_daily_direction": "bullish",
+      "investing_daily_return_pts": 272.0,
+      "release_time": "2024-09-23 13:45:00",
+      "title": "S&P Global Comp Flash PMI",
+      "yahoo_daily_direction": "bullish",
+      "yahoo_daily_return_pts": 271.990234375
+    },
+    {
+      "abs_return_diff_pts": 0.0,
+      "investing_daily_direction": "bearish",
+      "investing_daily_return_pts": -96.75,
+      "release_time": "2024-01-17 13:30:00",
+      "title": "Retail Sales MM *",
+      "yahoo_daily_direction": "bearish",
+      "yahoo_daily_return_pts": -96.75
+    },
+    {
+      "abs_return_diff_pts": 0.0,
+      "investing_daily_direction": "bullish",
+      "investing_daily_return_pts": 13.5,
+      "release_time": "2024-01-25 13:30:00",
+      "title": "Initial Jobless Clm*",
+      "yahoo_daily_direction": "bullish",
+      "yahoo_daily_return_pts": 13.5
+    },
+    {
+      "abs_return_diff_pts": 0.0,
+      "investing_daily_direction": "bullish",
+      "investing_daily_return_pts": 240.25,
+      "release_time": "2024-01-18 13:30:00",
+      "title": "Building Permits: Number * | Initial Jobless Clm*",
+      "yahoo_daily_direction": "bullish",
+      "yahoo_daily_return_pts": 240.25
+    },
+    {
+      "abs_return_diff_pts": 0.0,
+      "investing_daily_direction": "bullish",
+      "investing_daily_return_pts": 328.5,
+      "release_time": "2024-01-19 15:00:00",
+      "title": "Existing Home Sales",
+      "yahoo_daily_direction": "bullish",
+      "yahoo_daily_return_pts": 328.5
+    },
+    {
+      "abs_return_diff_pts": 0.0,
+      "investing_daily_direction": "bullish",
+      "investing_daily_return_pts": 89.75,
+      "release_time": "2024-01-24 14:45:00",
+      "title": "S&P Global Comp Flash PMI",
+      "yahoo_daily_direction": "bullish",
+      "yahoo_daily_return_pts": 89.75
+    },
+    {
+      "abs_return_diff_pts": 0.0,
+      "investing_daily_direction": "bullish",
+      "investing_daily_return_pts": 194.5,
+      "release_time": "2024-02-01 13:30:00",
+      "title": "Initial Jobless Clm*",
+      "yahoo_daily_direction": "bullish",
+      "yahoo_daily_return_pts": 194.5
+    },
+    {
+      "abs_return_diff_pts": 0.0,
+      "investing_daily_direction": "bullish",
+      "investing_daily_return_pts": 194.5,
+      "release_time": "2024-02-01 15:00:00",
+      "title": "ISM Manufacturing PMI",
+      "yahoo_daily_direction": "bullish",
+      "yahoo_daily_return_pts": 194.5
+    },
+    {
+      "abs_return_diff_pts": 0.0,
+      "investing_daily_direction": "bullish",
+      "investing_daily_return_pts": 296.0,
+      "release_time": "2024-02-02 13:30:00",
+      "title": "Non-Farm Payrolls* | Unemployment Rate*",
+      "yahoo_daily_direction": "bullish",
+      "yahoo_daily_return_pts": 296.0
+    },
+    {
+      "abs_return_diff_pts": 0.0,
+      "investing_daily_direction": "bearish",
+      "investing_daily_return_pts": -32.75,
+      "release_time": "2024-02-05 14:45:00",
+      "title": "S&P Global Comp Final PMI",
+      "yahoo_daily_direction": "bearish",
+      "yahoo_daily_return_pts": -32.75
+    },
+    {
+      "abs_return_diff_pts": 0.0,
+      "investing_daily_direction": "bearish",
+      "investing_daily_return_pts": -32.75,
+      "release_time": "2024-02-05 15:00:00",
+      "title": "ISM N-Mfg PMI",
+      "yahoo_daily_direction": "bearish",
+      "yahoo_daily_return_pts": -32.75
+    },
+    {
+      "abs_return_diff_pts": 0.0,
+      "investing_daily_direction": "bullish",
+      "investing_daily_return_pts": 26.5,
+      "release_time": "2024-02-08 13:30:00",
+      "title": "Initial Jobless Clm*",
+      "yahoo_daily_direction": "bullish",
+      "yahoo_daily_return_pts": 26.5
+    },
+    {
+      "abs_return_diff_pts": 0.0,
+      "investing_daily_direction": "bearish",
+      "investing_daily_return_pts": -288.25,
+      "release_time": "2024-02-13 13:30:00",
+      "title": "CPI MM, SA* | CPI YY, NSA* | Core CPI MM, SA* | Core CPI YY, NSA*",
+      "yahoo_daily_direction": "bearish",
+      "yahoo_daily_return_pts": -288.25
+    }
+  ],
+  "left_name": "yahoo_daily",
+  "left_reactions": ".\\macro_reactions_yahoo_daily.csv",
+  "neutral_threshold_pts": 10.0,
+  "note": "Accuracy is measured as market_bias_side direction versus same-day close reaction direction.",
+  "overall": {
+    "avg_abs_return_diff_pts": 0.000439453125,
+    "direction_agreement": 1.0,
+    "group_key": "all",
+    "group_type": "overall",
+    "investing_daily_avg_return_pts": 7.53125,
+    "investing_daily_bias_accuracy": 0.405,
+    "matched_events": 200,
+    "return_correlation": 0.9999999998852631,
+    "same_sign_agreement": 1.0,
+    "yahoo_daily_avg_return_pts": 7.531591796875,
+    "yahoo_daily_bias_accuracy": 0.405
+  },
+  "right_name": "investing_daily",
+  "right_reactions": ".\\macro_reactions_investing_daily.csv",
+  "rows": {
+    "left_only_events": 80,
+    "left_rows": 280,
+    "matched_events": 200,
+    "right_only_events": 0,
+    "right_rows": 200
+  }
+}

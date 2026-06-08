@@ -1,7 +1,17 @@
 {
   "default_source": "yahoo",
-  "active_market_data_file": "NQ_5min_data.csv",
-  "active_profiles_file": "macro_reaction_profiles_60m.csv",
+  "active_market_data_file": "NQ_dabento_60min_long_data.csv",
+  "active_profiles_file": "macro_reaction_profiles_dabento_1m.csv",
+  "active_reaction_files": [
+    "macro_reactions_dabento_1m.csv",
+    "macro_reactions_dabento_5m.csv",
+    "macro_reactions_dabento_60m_long.csv"
+  ],
+  "active_reaction_labels": [
+    "dabento_1m",
+    "dabento_5m",
+    "dabento_60m_long"
+  ],
   "yahoo": {
     "enabled": true,
     "ticker": "NQ=F",
@@ -9,6 +19,13 @@
     "primary_intraday_interval": "5m",
     "refresh_on_runner": false,
     "notes": "Yahoo is the default source until an external futures API/export is added."
+  },
+  "daily_confirmation": {
+    "enabled": true,
+    "source_label": "investing_daily_clean",
+    "profiles_file": "macro_reaction_profiles_investing_daily.csv",
+    "output": "macro_live_signal_current.csv",
+    "notes": "Temporary daily baseline confirmation until deeper 1m/5m NQ history is available."
   },
   "external_api": {
     "enabled": false,

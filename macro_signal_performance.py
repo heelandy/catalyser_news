@@ -189,7 +189,10 @@ def build_grades(
         if matches is None or matches.empty:
             continue
         for _, reaction in matches.iterrows():
-            rows.append(grade_signal_against_reaction(signal, reaction, windows, primary_window, neutral_threshold_pts))
+            grade = grade_signal_against_reaction(signal, reaction, windows, primary_window, neutral_threshold_pts)
+            if grade.get("primary_actual_direction") == "unknown":
+                continue
+            rows.append(grade)
 
     return pd.DataFrame(rows)
 

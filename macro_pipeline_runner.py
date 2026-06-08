@@ -27,6 +27,7 @@ from pathlib import Path
 DEFAULT_REACTION_FILES = ["macro_reactions_1m.csv", "macro_reactions_5m.csv", "macro_reactions_60m.csv"]
 DEFAULT_REACTION_LABELS = ["1m", "5m", "60m"]
 DEFAULT_PROFILES = "macro_reaction_profiles_5m.csv"
+DEFAULT_DAILY_CONFIRMATION_PROFILES = "macro_reaction_profiles_investing_daily.csv"
 
 
 @dataclass
@@ -306,6 +307,28 @@ def build_stages(args: argparse.Namespace) -> list[Stage]:
             )
         )
 
+    if not args.skip_daily_confirmation:
+        stages.append(
+            Stage(
+                name="daily_confirmation",
+                command=python_cmd(args, "macro_daily_confirmation.py")
+                + [
+                    "--signals",
+                    args.adjusted_signal_output,
+                    "--daily-profiles",
+                    args.daily_confirmation_profiles,
+                    "--output",
+                    args.current_signal_output,
+                    "--summary-output",
+                    args.daily_confirmation_report_output,
+                    "--source-label",
+                    args.daily_confirmation_source_label,
+                ],
+                required_inputs=[args.adjusted_signal_output, args.daily_confirmation_profiles],
+                expected_outputs=[args.current_signal_output, args.daily_confirmation_report_output],
+            )
+        )
+
     return stages
 
 
@@ -321,7 +344,7 @@ def run_alert_detector(args: argparse.Namespace, root: Path, log_file: Path | No
 
     command = python_cmd(args, "macro_pipeline_alerts.py") + [
         "--signals",
-        args.adjusted_signal_output,
+        args.alert_signal_output,
         "--state",
         args.alert_state_output,
         "--alerts-output",
@@ -430,6 +453,9 @@ def run_cycle(args: argparse.Namespace, root: Path, cycle: int) -> bool:
         "failed_stage": "",
         "stages": [stage.name for stage in stages],
         "adjusted_signal_output": args.adjusted_signal_output,
+        "current_signal_output": args.current_signal_output,
+        "alert_signal_output": args.alert_signal_output,
+        "daily_confirmation_enabled": not args.skip_daily_confirmation,
         "alerts_output": args.alerts_output,
         "alert_summary_output": args.alert_summary_output,
         "notify_alerts": args.notify_alerts,
@@ -546,6 +572,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--skip-trust", action="store_true")
     p.add_argument("--trust-weights-output", default="macro_signal_trust_weights.csv")
     p.add_argument("--adjusted-signal-output", default="macro_live_signal_adjusted.csv")
+    p.add_argument("--skip-daily-confirmation", action="store_true")
+    p.add_argument("--daily-confirmation-profiles", default=DEFAULT_DAILY_CONFIRMATION_PROFILES)
+    p.add_argument("--daily-confirmation-source-label", default="investing_daily_clean")
+    p.add_argument("--daily-confirmation-report-output", default="macro_daily_confirmation_report.json")
+    p.add_argument("--current-signal-output", default="macro_live_signal_current.csv")
     return p.parse_args()
 
 
@@ -576,6 +607,29 @@ def normalize_args(args: argparse.Namespace) -> argparse.Namespace:
 
     if args.reaction_labels is None:
         args.reaction_labels = DEFAULT_REACTION_LABELS if args.reaction_files == DEFAULT_REACTION_FILES else []
+
+    config_reaction_files = market_config.get("active_reaction_files")
+    if args.reaction_files == DEFAULT_REACTION_FILES and isinstance(config_reaction_files, list) and config_reaction_files:
+        args.reaction_files = [str(path) for path in config_reaction_files]
+        if args.reaction_labels == DEFAULT_REACTION_LABELS:
+            args.reaction_labels = []
+
+    config_reaction_labels = market_config.get("active_reaction_labels")
+    if isinstance(config_reaction_labels, list) and config_reaction_labels:
+        args.reaction_labels = [str(label) for label in config_reaction_labels]
+
+    daily_confirmation = market_config.get("daily_confirmation") if isinstance(market_config.get("daily_confirmation"), dict) else {}
+    if daily_confirmation:
+        if not bool(daily_confirmation.get("enabled", True)):
+            args.skip_daily_confirmation = True
+        if args.daily_confirmation_profiles == DEFAULT_DAILY_CONFIRMATION_PROFILES and daily_confirmation.get("profiles_file"):
+            args.daily_confirmation_profiles = str(daily_confirmation["profiles_file"])
+        if args.current_signal_output == "macro_live_signal_current.csv" and daily_confirmation.get("output"):
+            args.current_signal_output = str(daily_confirmation["output"])
+        if args.daily_confirmation_source_label == "investing_daily_clean" and daily_confirmation.get("source_label"):
+            args.daily_confirmation_source_label = str(daily_confirmation["source_label"])
+
+    args.alert_signal_output = args.adjusted_signal_output if args.skip_daily_confirmation else args.current_signal_output
     return args
 
 

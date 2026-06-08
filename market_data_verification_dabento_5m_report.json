@@ -1,0 +1,395 @@
+{
+  "meta": {
+    "input": "NQ_dabento_5min_data.csv",
+    "raw_rows": 423719,
+    "original_columns": [
+      "date",
+      "open",
+      "high",
+      "low",
+      "close",
+      "adj_close",
+      "volume"
+    ],
+    "clean_columns": [
+      "date",
+      "open",
+      "high",
+      "low",
+      "close",
+      "adj_close",
+      "volume"
+    ],
+    "datetime_column": "date",
+    "open_column": "open",
+    "high_column": "high",
+    "low_column": "low",
+    "close_column": "close",
+    "volume_column": "volume",
+    "input_timezone": "UTC",
+    "session_timezone": "America/New_York",
+    "datetime_parse_failures": 0,
+    "timezone_localization_failures": 0
+  },
+  "quality": {
+    "rows": 423719,
+    "start": "2020-01-01 23:00:00",
+    "end": "2025-12-31 20:45:00",
+    "duplicate_timestamps": 0,
+    "null_counts": {
+      "date": 0,
+      "open": 0,
+      "high": 0,
+      "low": 0,
+      "close": 0,
+      "adj_close": 0,
+      "volume": 0
+    },
+    "ohlc_issues": {
+      "high_less_than_low": 0,
+      "high_below_open_or_close": 0,
+      "low_above_open_or_close": 0
+    },
+    "volume_issues": {
+      "negative_volume": 0,
+      "zero_volume": 0
+    },
+    "tick_size": 0.25,
+    "tick_issues": {
+      "open": 0,
+      "high": 0,
+      "low": 0,
+      "close": 0
+    },
+    "interval_seconds": {
+      "mode": 300.0,
+      "median": 300.0,
+      "p95": 300.0,
+      "top_counts": {
+        "300.0": 421717,
+        "3900.0": 1190,
+        "1200.0": 372,
+        "176700.0": 279,
+        "600.0": 43,
+        "18300.0": 38,
+        "900.0": 17,
+        "1500.0": 11,
+        "263100.0": 10,
+        "173100.0": 6,
+        "180300.0": 6,
+        "190200.0": 6,
+        "17400.0": 3,
+        "3000.0": 2,
+        "3600.0": 2
+      }
+    },
+    "large_gaps": [
+      {
+        "previous_date": "2020-12-24 18:10:00",
+        "date": "2020-12-27 23:00:00",
+        "gap_seconds": 276600.0
+      },
+      {
+        "previous_date": "2022-12-30 21:55:00",
+        "date": "2023-01-02 23:00:00",
+        "gap_seconds": 263100.0
+      },
+      {
+        "previous_date": "2022-04-14 20:55:00",
+        "date": "2022-04-17 22:00:00",
+        "gap_seconds": 263100.0
+      },
+      {
+        "previous_date": "2021-12-23 21:55:00",
+        "date": "2021-12-26 23:00:00",
+        "gap_seconds": 263100.0
+      },
+      {
+        "previous_date": "2022-12-23 21:55:00",
+        "date": "2022-12-26 23:00:00",
+        "gap_seconds": 263100.0
+      },
+      {
+        "previous_date": "2020-04-09 20:55:00",
+        "date": "2020-04-12 22:00:00",
+        "gap_seconds": 263100.0
+      },
+      {
+        "previous_date": "2024-03-28 20:55:00",
+        "date": "2024-03-31 22:00:00",
+        "gap_seconds": 263100.0
+      },
+      {
+        "previous_date": "2025-04-17 20:55:00",
+        "date": "2025-04-20 22:00:00",
+        "gap_seconds": 263100.0
+      },
+      {
+        "previous_date": "2020-12-31 21:55:00",
+        "date": "2021-01-03 23:00:00",
+        "gap_seconds": 263100.0
+      },
+      {
+        "previous_date": "2023-12-29 21:55:00",
+        "date": "2024-01-01 23:00:00",
+        "gap_seconds": 263100.0
+      },
+      {
+        "previous_date": "2023-12-22 21:55:00",
+        "date": "2023-12-25 23:00:00",
+        "gap_seconds": 263100.0
+      },
+      {
+        "previous_date": "2023-04-07 13:10:00",
+        "date": "2023-04-09 22:00:00",
+        "gap_seconds": 204600.0
+      },
+      {
+        "previous_date": "2021-04-02 13:10:00",
+        "date": "2021-04-04 22:00:00",
+        "gap_seconds": 204600.0
+      },
+      {
+        "previous_date": "2020-02-28 15:55:00",
+        "date": "2020-03-01 23:00:00",
+        "gap_seconds": 198300.0
+      },
+      {
+        "previous_date": "2025-07-04 16:55:00",
+        "date": "2025-07-06 22:00:00",
+        "gap_seconds": 191100.0
+      },
+      {
+        "previous_date": "2020-07-03 16:55:00",
+        "date": "2020-07-05 22:00:00",
+        "gap_seconds": 191100.0
+      },
+      {
+        "previous_date": "2022-11-25 18:10:00",
+        "date": "2022-11-27 23:00:00",
+        "gap_seconds": 190200.0
+      },
+      {
+        "previous_date": "2021-11-26 18:10:00",
+        "date": "2021-11-28 23:00:00",
+        "gap_seconds": 190200.0
+      },
+      {
+        "previous_date": "2020-11-27 18:10:00",
+        "date": "2020-11-29 23:00:00",
+        "gap_seconds": 190200.0
+      },
+      {
+        "previous_date": "2024-11-29 18:10:00",
+        "date": "2024-12-01 23:00:00",
+        "gap_seconds": 190200.0
+      },
+      {
+        "previous_date": "2023-11-24 18:10:00",
+        "date": "2023-11-26 23:00:00",
+        "gap_seconds": 190200.0
+      },
+      {
+        "previous_date": "2025-11-28 18:10:00",
+        "date": "2025-11-30 23:00:00",
+        "gap_seconds": 190200.0
+      },
+      {
+        "previous_date": "2025-10-31 20:55:00",
+        "date": "2025-11-02 23:00:00",
+        "gap_seconds": 180300.0
+      },
+      {
+        "previous_date": "2022-11-04 20:55:00",
+        "date": "2022-11-06 23:00:00",
+        "gap_seconds": 180300.0
+      },
+      {
+        "previous_date": "2021-11-05 20:55:00",
+        "date": "2021-11-07 23:00:00",
+        "gap_seconds": 180300.0
+      }
+    ],
+    "rows_by_year": {
+      "2020": 69991,
+      "2021": 70695,
+      "2022": 70827,
+      "2023": 70689,
+      "2024": 71013,
+      "2025": 70504
+    },
+    "rows_by_month": {
+      "2020-01": 5961,
+      "2020-02": 5346,
+      "2020-03": 5838,
+      "2020-04": 5734,
+      "2020-05": 5688,
+      "2020-06": 5904,
+      "2020-07": 6210,
+      "2020-08": 5757,
+      "2020-09": 5961,
+      "2020-10": 5982,
+      "2020-11": 5658,
+      "2020-12": 5952,
+      "2021-01": 5427,
+      "2021-02": 5415,
+      "2021-03": 6291,
+      "2021-04": 5892,
+      "2021-05": 5712,
+      "2021-06": 6015,
+      "2021-07": 6000,
+      "2021-08": 6096,
+      "2021-09": 6024,
+      "2021-10": 5796,
+      "2021-11": 5967,
+      "2021-12": 6060,
+      "2022-01": 5760,
+      "2022-02": 5472,
+      "2022-03": 6360,
+      "2022-04": 5496,
+      "2022-05": 6048,
+      "2022-06": 6024,
+      "2022-07": 5748,
+      "2022-08": 6348,
+      "2022-09": 6000,
+      "2022-10": 5820,
+      "2022-11": 5967,
+      "2022-12": 5784,
+      "2023-01": 5760,
+      "2023-02": 5472,
+      "2023-03": 6336,
+      "2023-04": 5451,
+      "2023-05": 6300,
+      "2023-06": 6000,
+      "2023-07": 5727,
+      "2023-08": 6348,
+      "2023-09": 5724,
+      "2023-10": 6096,
+      "2023-11": 5967,
+      "2023-12": 5508,
+      "2024-01": 6036,
+      "2024-02": 5748,
+      "2024-03": 5532,
+      "2024-04": 6072,
+      "2024-05": 6276,
+      "2024-06": 5496,
+      "2024-07": 6255,
+      "2024-08": 6048,
+      "2024-09": 5772,
+      "2024-10": 6348,
+      "2024-11": 5679,
+      "2024-12": 5751,
+      "2025-01": 5934,
+      "2025-02": 5472,
+      "2025-03": 5820,
+      "2025-04": 5796,
+      "2025-05": 6000,
+      "2025-06": 5772,
+      "2025-07": 6255,
+      "2025-08": 5796,
+      "2025-09": 6024,
+      "2025-10": 6324,
+      "2025-11": 5310,
+      "2025-12": 6001
+    }
+  },
+  "intraday_reference": {
+    "status": "mismatch",
+    "comparison": "candidate_1m_resampled_to_60m_vs_reference_60m",
+    "overlap_rows": 11233,
+    "all_ohlc_within_tolerance_rows": 8220,
+    "tolerance_points": 0.25,
+    "max_abs_ohlc_diff": 498.25,
+    "diffs": {
+      "open": {
+        "max_abs": 316.75,
+        "mean_abs": 14.199479213033028,
+        "within_tolerance_count": 9566
+      },
+      "high": {
+        "max_abs": 320.25,
+        "mean_abs": 13.837087153921482,
+        "within_tolerance_count": 10260
+      },
+      "low": {
+        "max_abs": 498.25,
+        "mean_abs": 14.754384403098015,
+        "within_tolerance_count": 10188
+      },
+      "close": {
+        "max_abs": 305.5,
+        "mean_abs": 14.01517849194338,
+        "within_tolerance_count": 9481
+      }
+    },
+    "close_offset_points": {
+      "mean": 13.755897801121694,
+      "std": 56.630067127963194,
+      "min": -209.0,
+      "max": 305.5
+    },
+    "close_delta_comparison": {
+      "correlation": 0.9733200569891834,
+      "mean_abs_delta_diff": 1.2494212962962963,
+      "max_abs_delta_diff": 296.5,
+      "within_1_point_count": 10087,
+      "delta_rows": 11232
+    },
+    "first_overlap": "2024-01-12 05:00:00",
+    "last_overlap": "2025-12-31 20:00:00"
+  },
+  "daily_reference": {
+    "status": "mismatch",
+    "comparison": "candidate_1m_session_daily_vs_reference_daily",
+    "overlap_rows": 1511,
+    "all_ohlc_within_tolerance_rows": 25,
+    "tolerance_points": 0.25,
+    "max_abs_ohlc_diff": 660.75,
+    "diffs": {
+      "open": {
+        "max_abs": 303.25,
+        "mean_abs": 10.296988749172733,
+        "within_tolerance_count": 1356
+      },
+      "high": {
+        "max_abs": 660.75,
+        "mean_abs": 10.385135956113501,
+        "within_tolerance_count": 1381
+      },
+      "low": {
+        "max_abs": 310.25,
+        "mean_abs": 9.558901389808074,
+        "within_tolerance_count": 1388
+      },
+      "close": {
+        "max_abs": 605.75,
+        "mean_abs": 31.024712330927365,
+        "within_tolerance_count": 25
+      }
+    },
+    "close_offset_points": {
+      "mean": 9.606075950839676,
+      "std": 64.78561119432663,
+      "min": -605.75,
+      "max": 604.51953125
+    },
+    "close_delta_comparison": {
+      "correlation": 0.9420894418506878,
+      "mean_abs_delta_diff": 41.07003246585265,
+      "max_abs_delta_diff": 620.51953125,
+      "within_1_point_count": 45,
+      "delta_rows": 1510
+    },
+    "first_overlap": "2020-01-02 00:00:00",
+    "last_overlap": "2025-12-31 00:00:00"
+  },
+  "verdict": {
+    "approved_for_model_use": false,
+    "label": "do_not_use_yet",
+    "blockers": [],
+    "warnings": [
+      "Candidate differs from Yahoo 60m reference on overlapping hourly bars",
+      "Candidate differs from Yahoo daily reference on overlapping sessions"
+    ]
+  }
+}

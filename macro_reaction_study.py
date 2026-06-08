@@ -588,7 +588,12 @@ def market_return_pct(points, pre_price):
     return float(points) / float(pre_price) * 100.0
 
 
-def compute_daily_reactions(events: pd.DataFrame, bars: pd.DataFrame, symbol: str) -> pd.DataFrame:
+def compute_daily_reactions(
+    events: pd.DataFrame,
+    bars: pd.DataFrame,
+    symbol: str,
+    max_session_gap_days: int | None = None,
+) -> pd.DataFrame:
     bars = bars.copy()
     bars["session_date"] = bars["date"].dt.date
     rows = []
@@ -601,6 +606,9 @@ def compute_daily_reactions(events: pd.DataFrame, bars: pd.DataFrame, symbol: st
             continue
         prev_bar = bars.iloc[idx - 1]
         event_bar = bars.iloc[idx]
+        session_gap_days = (event_bar.session_date - release_date).days
+        if max_session_gap_days is not None and session_gap_days > max_session_gap_days:
+            continue
         next_bar = bars.iloc[idx + 1] if idx + 1 < len(bars) else None
         pre = float(prev_bar.close)
         ret = float(event_bar.close) - pre
@@ -611,6 +619,7 @@ def compute_daily_reactions(events: pd.DataFrame, bars: pd.DataFrame, symbol: st
             "symbol": symbol,
             "reaction_mode": "daily",
             "market_session": event_bar.session_date.isoformat(),
+            "daily_session_gap_days": int(session_gap_days),
             "pre_price": pre,
             "event_open": float(event_bar.open),
             "event_high": float(event_bar.high),
@@ -702,11 +711,12 @@ def compute_reactions(
     symbol: str,
     windows_minutes: list[int],
     primary_window_minutes: int,
+    daily_max_session_gap_days: int | None = None,
 ) -> pd.DataFrame:
     events = events.dropna(subset=["release_time"]).sort_values("release_time").reset_index(drop=True)
     if has_intraday_bars(bars):
         return compute_intraday_reactions(events, bars, symbol, windows_minutes, primary_window_minutes)
-    return compute_daily_reactions(events, bars, symbol)
+    return compute_daily_reactions(events, bars, symbol, daily_max_session_gap_days)
 
 
 def smoothed_probability(successes: int, trials: int, prior: float = 0.5, strength: float = 4.0) -> float:
@@ -1082,6 +1092,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--move-prior", type=float, default=0.25, help="Bayesian prior for market-move probability smoothing")
     p.add_argument("--smoothing-strength", type=float, default=4.0, help="Prior sample strength for probability smoothing")
     p.add_argument("--min-events", type=int, default=3, help="Minimum events required for a profile row")
+    p.add_argument(
+        "--daily-max-session-gap-days",
+        type=int,
+        default=None,
+        help="For daily bars, skip an event when the matched market session is more than this many calendar days after release.",
+    )
     p.add_argument("--reaction-output", default="macro_reactions.csv")
     p.add_argument("--profile-output", default="macro_reaction_profiles.csv")
     p.add_argument("--calibrate-live", help="Live macro_releases.csv to calibrate using --profiles")
@@ -1129,7 +1145,14 @@ def main() -> None:
 
     bars = load_market_data(args.market_data)
     windows = parse_windows(args.windows_minutes)
-    reactions = compute_reactions(events, bars, args.symbol, windows, args.primary_window_minutes)
+    reactions = compute_reactions(
+        events,
+        bars,
+        args.symbol,
+        windows,
+        args.primary_window_minutes,
+        args.daily_max_session_gap_days,
+    )
     reactions.to_csv(args.reaction_output, index=False)
     print(f"Wrote {len(reactions)} event reaction rows to {args.reaction_output}.")
 

@@ -1,5 +1,52 @@
 # Changelog
 
+## 1.0.7 - Dabento Intraday History
+
+- Added `dabento_nq_adapter.py` to normalize Dabento NQ OHLCV exports while
+  keeping the source adapter separate from the reaction, trust, and dashboard
+  modules.
+- Built canonical Dabento 1-minute, derived 5-minute, derived 60-minute, and
+  long 2010-2026 60-minute NQ datasets locally.
+- Verified the long 60-minute Dabento file against the 1-minute-derived
+  Dabento 60-minute file: 35,431 of 35,432 overlapping hourly bars matched
+  within 0.25 points, with 0.999996 close-delta correlation.
+- Rebuilt Dabento reaction/profile artifacts and switched active performance
+  grading to `macro_reactions_dabento_60m_long.csv` so current 2026 releases
+  have valid post-release outcomes while the 1m/5m data remains available for
+  higher-resolution studies.
+- Updated `macro_signal_performance.py` to skip out-of-coverage reactions where
+  the primary actual direction is unknown instead of counting blank reactions
+  in accuracy/trust statistics.
+- Kept raw Dabento files and large derived OHLC CSVs local-only while allowing
+  small reports, roll maps, and reaction/profile artifacts into the GitHub
+  upload list.
+
+## 1.0.6 - Daily Confirmation Current Signal
+
+- Added `macro_daily_confirmation.py` as a separate temporary confirmation
+  layer while deeper 1m/5m NQ history is unavailable.
+- Generated `macro_live_signal_current.csv` from the trust-adjusted signal plus
+  `macro_reaction_profiles_investing_daily.csv`.
+- Updated `macro_pipeline_runner.py` so daily confirmation runs after trust
+  adjustment by default and alerts use the current signal file.
+- Updated the dashboard to load `macro_live_signal_current.csv` and show daily
+  confirmation in the detail panel.
+- Kept Yahoo 60m profiles as the primary calibration source and Investing.com
+  daily profiles as confirmation only.
+
+## 1.0.5 - Daily Source Reconciliation
+
+- Added `market_data_source_reconcile.py` to compare Investing.com daily NQ
+  futures data against Yahoo daily data and create a clean canonical candidate.
+- Generated `NQ_investing_daily_clean_candidate.csv` with 1,481 clean rows after
+  excluding no-reference, invalid OHLC, and roll/session mismatch dates.
+- Added `--daily-max-session-gap-days` to `macro_reaction_study.py` so daily
+  experiments can skip events when cleaned data removes the release session.
+- Built separate Yahoo and Investing.com daily reaction/profile artifacts.
+- Added `macro_daily_source_compare.py` and confirmed that the 200 matched
+  same-session daily release rows have 100% direction agreement between Yahoo
+  and the clean Investing.com source.
+
 ## 1.0.4 - Multi-Timeframe Export Verification
 
 - Verified the new `NQ_in_*` TradingView-style CSV exports without merging them
@@ -11,6 +58,10 @@
   intraday files showed strong overlapping movement alignment.
 - Updated the verifier timestamp alignment after dropped rows and kept raw
   platform exports out of Git while allowing small verification reports.
+- Added Investing.com numeric parsing for comma-formatted prices and K/M/B
+  volumes, then verified `Nasdaq 100 Futures Historical Data.csv` as a separate
+  daily source. It is not approved for active model use until roll/session
+  differences are modeled.
 
 ## 1.0.3 - Market Data Verification
 

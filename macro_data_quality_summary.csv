@@ -1,8 +1,8 @@
 metric,value
-rows,13552
-usable_rows,13552
+rows,95308
+usable_rows,95308
 duplicate_timestamps,0
-interval_mode_seconds,300.0
+interval_mode_seconds,3600.0
 large_gap_count,20
 high_less_than_low,0
 high_below_open_or_close,0

@@ -8,6 +8,7 @@ each responsibility separate:
 - `market_data_backfill.py` plans missing market-data ranges before download.
 - `market_data_verify.py` verifies newly added market-data exports before use.
 - `futures_data_adapter.py` normalizes deeper external futures CSV exports.
+- `dabento_nq_adapter.py` normalizes Dabento NQ OHLCV exports.
 - `catalyser_news.py` watches scheduled catalysts and live economic-calendar rows.
 - `macro_reaction_study.py` learns how NQ historically reacted to macro surprises.
 - `macro_signal_performance.py` grades signal predictions after releases occur.
@@ -18,7 +19,8 @@ each responsibility separate:
 - `macro_pipeline_runner.py` runs the separated modules in a repeatable loop.
 - `macro_pipeline_alerts.py` detects release-state and runner-health changes.
 - `macro_alert_notify.py` sends optional notifications for newly detected alerts.
-- `dashboard/` displays the adjusted signals, performance, and trust weights.
+- `macro_daily_confirmation.py` adds the temporary daily baseline confirmation.
+- `dashboard/` displays the current signals, performance, and trust weights.
 
 Older validation tools, broker exports, sample files, duplicate parquet outputs,
 and one-off test artifacts are archived under `extra/` so the root stays focused
@@ -27,9 +29,8 @@ on the macro catalyst engine.
 This is research tooling, not financial advice. Live-market use needs monitoring,
 logging, and broker/risk controls before any automation is connected to orders.
 
-Default market-data source: Yahoo. The project keeps
-`market_data_config.json` set to Yahoo until you add an external API/export
-source later.
+Default downloader: Yahoo. The active local research feed can also point to
+verified Dabento-derived files when those are available in the workspace.
 
 ## Setup
 
@@ -103,6 +104,44 @@ python .\market_data_verify.py --input .\NQ_in_1_hour.csv --datetime-column date
 Do not merge the candidate file into the active model until
 `market_data_verification_report.json` says it is approved for model use.
 
+Verify an Investing.com daily export such as
+`Nasdaq 100 Futures Historical Data.csv`:
+
+```powershell
+python .\market_data_verify.py --input ".\Nasdaq 100 Futures Historical Data.csv" --datetime-column Date --open-column Open --high-column High --low-column Low --close-column Price --volume-column Vol. --input-timezone America/New_York --expected-interval-seconds 86400 --reference-daily .\NQ_F_daily.csv --report-output .\market_data_verification_investing_nq_daily_report.json --summary-output .\market_data_verification_investing_nq_daily_summary.csv
+```
+
+Reconcile that daily source against Yahoo and create a clean candidate:
+
+```powershell
+python .\market_data_source_reconcile.py --candidate ".\Nasdaq 100 Futures Historical Data.csv" --reference .\NQ_F_daily.csv --source-name investing --round-to-tick
+```
+
+Build separate daily reaction profiles and compare them:
+
+```powershell
+python .\macro_reaction_study.py --events-file .\macro_events_history_2024_2026_high.csv --market-data .\NQ_investing_daily_clean_candidate.csv --symbol NQ_INVESTING_DAILY --cluster-output .\macro_event_clusters_investing_daily.csv --reaction-output .\macro_reactions_investing_daily.csv --profile-output .\macro_reaction_profiles_investing_daily.csv --min-events 3 --daily-max-session-gap-days 0
+python .\macro_reaction_study.py --events-file .\macro_events_history_2024_2026_high.csv --market-data .\NQ_F_daily.csv --symbol NQ_YAHOO_DAILY --cluster-output .\macro_event_clusters_yahoo_daily.csv --reaction-output .\macro_reactions_yahoo_daily.csv --profile-output .\macro_reaction_profiles_yahoo_daily.csv --min-events 3 --daily-max-session-gap-days 0
+python .\macro_daily_source_compare.py --left-reactions .\macro_reactions_yahoo_daily.csv --right-reactions .\macro_reactions_investing_daily.csv --left-name yahoo_daily --right-name investing_daily --neutral-threshold-pts 10
+```
+
+Normalize Dabento NQ OHLCV exports when those files exist locally:
+
+```powershell
+python .\dabento_nq_adapter.py --input .\dabento\glbx-mdp3-20200101-20251231.ohlcv-1m.csv --source-interval 1m
+python .\dabento_nq_adapter.py --input .\dabento\1hour_glbx-mdp3-20100606-20260607.ohlcv-1h.csv --source-interval 1h --out-60m .\NQ_dabento_60min_long_data.csv --roll-map-output .\NQ_dabento_60min_long_roll_map.csv --report-output .\dabento_nq_60min_long_adapter_report.json
+```
+
+The 1-minute Dabento file creates canonical 1m, 5m, and 60m outputs. The
+1-hour file creates the long 60m output used for current 2026 coverage until a
+deeper 1m/5m file is available.
+
+Build Dabento reaction profiles the same way as Yahoo or Investing.com:
+
+```powershell
+python .\macro_reaction_study.py --events-file .\macro_events_history_2024_2026_high.csv --market-data .\NQ_dabento_60min_long_data.csv --symbol NQ_DABENTO_60M_LONG --cluster-output .\macro_event_clusters_dabento_60m_long.csv --reaction-output .\macro_reactions_dabento_60m_long.csv --profile-output .\macro_reaction_profiles_dabento_60m_long.csv --min-events 3
+```
+
 The default command still preserves the older daily NQ files:
 
 ```powershell
@@ -115,14 +154,16 @@ The current default source config is:
 market_data_config.json
 ```
 
-It keeps Yahoo active with `NQ=F`, uses the intraday preset as the working
-refresh path, and leaves `external_api.enabled` as `false` until you have a
-provider/API key.
+It keeps Yahoo available as the default fetcher with `NQ=F`, leaves
+`external_api.enabled` as `false`, and points the active local research feed to
+the verified Dabento artifacts now present in this workspace.
 
 The active live calibration profile is currently
-`macro_reaction_profiles_60m.csv`, because Yahoo's 60-minute history reaches
-much further back than the 1-minute and 5-minute intraday files. The active
-market-data file remains `NQ_5min_data.csv` for timing and data-quality checks.
+`macro_reaction_profiles_dabento_1m.csv` for high-resolution release behavior
+where it exists. Performance grading uses the Dabento 1m, derived 5m, and long
+60m reaction files, with `macro_reactions_dabento_60m_long.csv` providing valid
+current 2026 outcomes. Data-quality and timing checks use
+`NQ_dabento_60min_long_data.csv` until deeper 2026 1m/5m data is added.
 
 When Yahoo's intraday limit is not enough, export deeper futures data from a
 broker, charting platform, or paid feed into `external_market_data/`, then
@@ -258,7 +299,7 @@ After releases have occurred and reaction files exist, grade predictions against
 actual NQ movement:
 
 ```powershell
-python .\macro_signal_performance.py --signals .\macro_live_signal.csv --reactions .\macro_reactions_1m.csv .\macro_reactions_5m.csv .\macro_reactions_60m.csv --reaction-labels 1m 5m 60m --windows-minutes 5,15,30,60,240,390 --primary-window-minutes 60 --grades-output macro_signal_grades.csv --performance-output macro_signal_performance.csv
+python .\macro_signal_performance.py --signals .\macro_live_signal.csv --reactions .\macro_reactions_dabento_1m.csv .\macro_reactions_dabento_5m.csv .\macro_reactions_dabento_60m_long.csv --reaction-labels dabento_1m dabento_5m dabento_60m_long --windows-minutes 5,15,30,60,240,390 --primary-window-minutes 60 --grades-output macro_signal_grades.csv --performance-output macro_signal_performance.csv
 ```
 
 Outputs:
@@ -271,7 +312,7 @@ Outputs:
 ## 5. Apply Trust Calibration
 
 Turn the performance summary into probability trust weights, then create the
-UI-ready adjusted signal contract:
+trust-adjusted signal contract:
 
 ```powershell
 python .\macro_signal_trust.py --signals .\macro_live_signal.csv --performance .\macro_signal_performance.csv --weights-output macro_signal_trust_weights.csv --adjusted-output macro_live_signal_adjusted.csv
@@ -283,6 +324,18 @@ Outputs:
   category, market bias, confidence, and fallback groups.
 - `macro_live_signal_adjusted.csv`: live signals with original probabilities
   preserved and final trust-adjusted fields appended.
+
+Keep the separate daily confirmation layer as a slower baseline cross-check for
+the current dashboard feed:
+
+```powershell
+python .\macro_daily_confirmation.py --signals .\macro_live_signal_adjusted.csv --daily-profiles .\macro_reaction_profiles_investing_daily.csv --output .\macro_live_signal_current.csv --summary-output .\macro_daily_confirmation_report.json
+```
+
+- `macro_live_signal_current.csv`: trust-adjusted signals with daily baseline
+  confirmation fields and final current probabilities.
+- `macro_daily_confirmation_report.json`: count of daily confirmations,
+  disagreements, and probability adjustment size.
 
 The UI should prefer these final fields when they are present:
 
@@ -312,6 +365,7 @@ Default cycle:
 - fetch current live macro rows into `macro_releases.csv`
 - calibrate them into `macro_live_signal.csv`
 - apply trust weights into `macro_live_signal_adjusted.csv`
+- apply daily confirmation into `macro_live_signal_current.csv`
 
 For release-time polling and continuous operation:
 
@@ -328,6 +382,8 @@ Optional switches:
 - `--refresh-timing-audit` rebuilds the release/bar timing audit.
 - `--refresh-probability-validation` rebuilds probability calibration reports.
 - `--skip-alerts` disables the separate alert detector for that runner cycle.
+- `--skip-daily-confirmation` leaves the dashboard/alerts on the trust-adjusted
+  file instead of the daily-confirmed current file.
 - `--alert-probability-jump-threshold 0.10` controls how large a probability
   change must be before an alert is logged.
 - `--emit-initial-alerts` logs new-signal alerts on the first alert snapshot.
@@ -344,7 +400,7 @@ allowlist.
 After each non-dry-run cycle, the runner also calls the separate alert detector:
 
 ```powershell
-python .\macro_pipeline_alerts.py --signals macro_live_signal_adjusted.csv --status macro_pipeline_status.json
+python .\macro_pipeline_alerts.py --signals macro_live_signal_current.csv --status macro_pipeline_status.json
 ```
 
 Alert outputs are local runtime files and are ignored by Git:
@@ -413,7 +469,8 @@ source and the pipeline runs:
 - `catalyser_news.py` sees the actual value on the next poll.
 - `macro_reaction_study.py` calibrates the release against historical profiles.
 - `macro_signal_trust.py` applies the feedback weights.
-- `macro_live_signal_adjusted.csv` receives the final UI fields.
+- `macro_daily_confirmation.py` applies the daily baseline confirmation.
+- `macro_live_signal_current.csv` receives the final UI fields.
 
 With `--watch-releases --poll-seconds 15`, expect the local CSV/dashboard to
 update about 15-30 seconds after TradingView exposes the actual number, plus a
@@ -437,7 +494,7 @@ http://127.0.0.1:8787/dashboard/
 
 The dashboard reads:
 
-- `macro_live_signal_adjusted.csv`
+- `macro_live_signal_current.csv`
 - `macro_signal_performance.csv`
 - `macro_signal_trust_weights.csv`
 - `macro_pipeline_status.json` when the runner has created it locally
@@ -470,14 +527,18 @@ Those files are kept for reference, not deleted.
 
 | File | Purpose |
 | --- | --- |
-| `market_data_config.json` | Current market-data source selection; Yahoo is active by default. |
+| `market_data_config.json` | Current market-data source selection; Yahoo fetcher plus active local Dabento research files. |
 | `market_data_backfill.py` | Separate missing-range planner for Yahoo/API backfills. |
 | `market_data_verify.py` | Separate verifier for newly added market-data exports. |
+| `market_data_source_reconcile.py` | Daily source reconciliation and clean candidate builder. |
 | `MARKET_DATA_SOURCES.md` | Source-selection guide for deeper futures history. |
 | `fetch_nq_yahoo.py` | Dynamic Yahoo market-data downloader. |
 | `futures_data_adapter.py` | External futures CSV normalizer for deeper intraday data. |
+| `dabento_nq_adapter.py` | Dabento NQ OHLCV normalizer, dominant-contract selector, resampler, and roll-map writer. |
 | `catalyser_news.py` | Catalyst calendar, news, live macro release watcher, probability scoring. |
 | `macro_reaction_study.py` | Historical event-to-price reaction study and live-release calibration. |
+| `macro_daily_source_compare.py` | Daily source-to-source reaction comparison report. |
+| `macro_daily_confirmation.py` | Temporary daily baseline confirmation layer for current live signals. |
 | `macro_signal_performance.py` | Post-release prediction grading and performance summaries. |
 | `macro_signal_trust.py` | Performance feedback layer for trust-adjusted live probabilities. |
 | `macro_data_quality.py` | Market-data health, gap, OHLC, and release-coverage report. |
@@ -490,9 +551,12 @@ Those files are kept for reference, not deleted.
 | `dashboard/app.js` | CSV loader, filters, tables, and detail panel for the dashboard. |
 | `dashboard/styles.css` | Dashboard visual system and responsive layout. |
 | `macro_live_signal.csv` | Compact UI-ready live signal contract. |
-| `macro_live_signal_adjusted.csv` | UI-ready trust-adjusted live signal contract. |
+| `macro_live_signal_adjusted.csv` | Trust-adjusted live signal contract. |
+| `macro_live_signal_current.csv` | Current dashboard signal contract with daily confirmation applied. |
 | `macro_reaction_profiles_5m.csv` | Smoothed historical reaction probabilities. |
 | `macro_reaction_profiles_60m.csv` | Deeper 2024-2026 hourly reaction probabilities. |
+| `macro_reaction_profiles_dabento_1m.csv` | Active high-resolution Dabento calibration profile where 1m history exists. |
+| `macro_reaction_profiles_dabento_60m_long.csv` | Long Dabento 60m reaction profile for 2010-2026 coverage. |
 | `macro_event_clusters_5m_60d.csv` | Same-timestamp macro release clusters. |
 | `macro_signal_grades.csv` | Per-signal outcome grade rows. |
 | `macro_signal_performance.csv` | Dashboard-ready model accuracy summary. |
@@ -511,9 +575,11 @@ Generated market files such as `NQ_1min_data.csv`, `NQ_5min_data.csv`, and
 `macro_reaction_profiles_5m.csv` are reproducible research artifacts. Private
 broker exports such as raw fills, order-history exports, and account journals
 should stay local unless you intentionally want them in a public repository.
-Large vendor/export datasets such as `Dataset_*.csv`, `NQ_in_*.csv`, and
+Large vendor/export datasets such as `Dataset_*.csv`, `NQ_in_*.csv`,
+`*Historical Data.csv`, raw `dabento/` files, `NQ_dabento_*data.csv`, and
 candidate normalized files such as `NQ_external_*candidate.csv` are ignored by
-Git.
+Git. Small reports, roll maps, and reaction/profile artifacts are allowed so
+the research state can be reproduced without publishing the vendor bars.
 
 ## Current Pipeline Status
 
@@ -549,22 +615,64 @@ As of the latest local run:
   `NQ_in_15_minute.csv` with 1,224 of 1,623. Treat them as a separate
   TradingView/NQ1! source until roll and session-close differences are modeled.
   See `market_data_verification_nq_in_batch_summary.csv` for the full matrix.
+- `Nasdaq 100 Futures Historical Data.csv` from Investing.com was verified as a
+  separate daily 2020-2025 source. It has 1,570 rows, no duplicate dates, and
+  1,481 of 1,510 overlapping Yahoo daily rows matched all OHLC fields within
+  0.25 points. It is still marked `do_not_use_yet` because it has two OHLC
+  anomalies, several non-0.25 tick values, and mismatch outliers clustered near
+  futures roll periods. Use it as a separate Investing.com daily baseline until
+  roll/session differences are modeled.
+- `market_data_source_reconcile.py` produced
+  `NQ_investing_daily_clean_candidate.csv` with 1,481 clean daily rows from
+  2020-01-02 to 2025-12-31. The clean candidate excludes no-reference rows,
+  source OHLC anomalies, and roll/session mismatch rows.
+- Same-session daily reaction studies were built for Yahoo and the clean
+  Investing.com source. Yahoo produced 280 daily reaction rows and 85 profile
+  rows; Investing.com produced 200 daily reaction rows and 82 profile rows.
+  On the 200 matched release days, `macro_daily_source_compare.py` reports
+  100.0% daily direction agreement, effectively 1.000 return correlation, and
+  only 0.0004 points average absolute return difference.
 - `futures_data_adapter.py` can now normalize deeper external futures exports
   into the same OHLC schema used by the reaction study.
-- The 1-minute study produced 7 reaction rows and 5 profile rows.
-- The 5-minute study produced 38 reaction rows and 25 profile rows.
-- The deeper 60-minute study fetched 381 high-importance TradingView event rows,
-  clustered them into 282 release moments, and produced 85 profile rows.
+- `dabento_nq_adapter.py` normalized the 2020-2025 1-minute Dabento file into
+  2,117,365 1m rows, 423,719 derived 5m rows, and 35,432 derived 60m rows.
+  It found no duplicate selected timestamps and no OHLC consistency issues.
+- The long Dabento 1-hour file produced `NQ_dabento_60min_long_data.csv` with
+  95,308 rows from 2010-06-06 22:00 to 2026-06-05 20:00, 4,137 sessions, no
+  duplicate selected timestamps, and clean OHLC structure.
+- The long Dabento 60m file matches the 1m-derived Dabento 60m file on 35,431
+  of 35,432 overlapping hourly bars within 0.25 points, with 0.999996
+  close-delta correlation. The one mismatch is the final partial hour of the
+  2020-2025 1m file.
+- Yahoo comparison remains a source/roll sanity check, not a strict approval
+  gate for Dabento. The long 60m file has high movement correlation to Yahoo
+  over the overlap, but OHLC exactness fails around continuous-contract roll and
+  session construction differences.
+- Dabento reaction studies were built for 1m, derived 5m, derived 60m, and long
+  60m. The long 60m study clustered 282 release moments and produced 85 profile
+  rows, with 281 valid 60-minute reaction outcomes.
 - `market_data_config.json` now points live calibration to
-  `macro_reaction_profiles_60m.csv` so the live signal benefits from those 282
-  release moments.
-- `macro_signal_performance.py` produced 24 graded signal/source rows and 51
-  performance summary rows from the current 1m, 5m, and 60m reaction sets.
-- `macro_signal_trust.py` produced 51 trust-weight rows and 14 trust-adjusted
+  `macro_reaction_profiles_dabento_1m.csv`, active quality/timing checks to
+  `NQ_dabento_60min_long_data.csv`, and active performance grading to
+  `macro_reactions_dabento_1m.csv`, `macro_reactions_dabento_5m.csv`, and
+  `macro_reactions_dabento_60m_long.csv`.
+- `macro_signal_performance.py` now skips out-of-coverage unknown reactions and
+  produced 8 valid graded rows plus 31 performance summary rows from the active
+  Dabento reaction set.
+- `macro_signal_trust.py` produced 31 trust-weight rows and 14 trust-adjusted
   live signal rows.
-- `macro_probability_validation.py` now reports 54.2% primary directional
-  accuracy, 0.227 Brier score, and 0.004 bullish calibration error on the
-  current 24 graded rows.
+- `macro_daily_confirmation.py` now produces `macro_live_signal_current.csv`
+  from the trust-adjusted signal plus `macro_reaction_profiles_investing_daily.csv`.
+  The latest run matched all 14 live rows: 5 with-signal confirmations,
+  7 daily leans, and 2 neutral confirmations. The average
+  absolute probability adjustment was 0.0013, with no direction changes.
+- `macro_probability_validation.py` now reports 25.0% primary directional
+  accuracy, 0.245 Brier score, and 37.5% actual bullish rate on the current 8
+  valid graded rows.
+- `macro_data_quality.py` now rates the active long 60m data as watch quality
+  at 80/100. `macro_timing_audit.py` still flags hourly-bar timing limits
+  because some current future releases are after the latest available market bar
+  and 60m bars cannot align to 12:30 releases as tightly as 1m/5m data.
 - Confidence scoring now caps weak, low-sample, whipsaw-heavy, fallback, or
   low-reliability signals more strictly before they reach the dashboard.
 - `macro_data_quality.py`, `macro_probability_validation.py`, and

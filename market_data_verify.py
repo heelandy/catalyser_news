@@ -40,9 +40,9 @@ def numeric_series(values: pd.Series) -> pd.Series:
     text = values.astype("string").str.strip()
     multiplier = pd.Series(1.0, index=values.index)
     suffix = text.str.extract(r"([kKmMbB])\s*$", expand=False).str.lower()
-    multiplier = multiplier.mask(suffix == "k", 1_000.0)
-    multiplier = multiplier.mask(suffix == "m", 1_000_000.0)
-    multiplier = multiplier.mask(suffix == "b", 1_000_000_000.0)
+    multiplier = multiplier.mask(suffix.eq("k").fillna(False), 1_000.0)
+    multiplier = multiplier.mask(suffix.eq("m").fillna(False), 1_000_000.0)
+    multiplier = multiplier.mask(suffix.eq("b").fillna(False), 1_000_000_000.0)
     clean = (
         text.str.replace(",", "", regex=False)
         .str.replace("$", "", regex=False)
@@ -102,8 +102,11 @@ def parse_candidate(path: Path, args: argparse.Namespace) -> tuple[pd.DataFrame,
     out["volume"] = numeric_series(raw[volume_col]) if volume_col else 0
     out["adj_close"] = out["close"]
 
+    session_timezone = getattr(args, "session_timezone", "") or args.input_timezone
+    session_time = localized.dt.tz_convert(ZoneInfo(session_timezone))
+
     local = pd.DataFrame()
-    local["local_time"] = localized
+    local["local_time"] = session_time
     for col in OHLC_COLUMNS + ["volume"]:
         local[col] = out[col]
 
@@ -119,6 +122,7 @@ def parse_candidate(path: Path, args: argparse.Namespace) -> tuple[pd.DataFrame,
         "close_column": close_col,
         "volume_column": volume_col or "",
         "input_timezone": args.input_timezone,
+        "session_timezone": session_timezone,
         "datetime_parse_failures": parsed_failures,
         "timezone_localization_failures": max(0, localization_failures),
     }
@@ -400,6 +404,7 @@ def main() -> None:
     parser.add_argument("--input", required=True)
     parser.add_argument("--datetime-column", default="")
     parser.add_argument("--input-timezone", default="UTC")
+    parser.add_argument("--session-timezone", default="", help="Timezone used for futures daily-session comparison")
     parser.add_argument("--open-column", default="")
     parser.add_argument("--high-column", default="")
     parser.add_argument("--low-column", default="")
