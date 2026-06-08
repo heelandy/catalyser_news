@@ -1,0 +1,338 @@
+{
+  "meta": {
+    "input": "NQ_in_1_hour.csv",
+    "raw_rows": 10504,
+    "original_columns": [
+      "datetime",
+      "symbol",
+      "open",
+      "high",
+      "low",
+      "close",
+      "volume"
+    ],
+    "clean_columns": [
+      "datetime",
+      "symbol",
+      "open",
+      "high",
+      "low",
+      "close",
+      "volume"
+    ],
+    "datetime_column": "datetime",
+    "open_column": "open",
+    "high_column": "high",
+    "low_column": "low",
+    "close_column": "close",
+    "volume_column": "volume",
+    "input_timezone": "UTC",
+    "datetime_parse_failures": 0,
+    "timezone_localization_failures": 0
+  },
+  "quality": {
+    "rows": 10504,
+    "start": "2024-01-01 23:00:00",
+    "end": "2025-10-10 15:00:00",
+    "duplicate_timestamps": 0,
+    "null_counts": {
+      "date": 0,
+      "open": 0,
+      "high": 0,
+      "low": 0,
+      "close": 0,
+      "adj_close": 0,
+      "volume": 0
+    },
+    "ohlc_issues": {
+      "high_less_than_low": 0,
+      "high_below_open_or_close": 0,
+      "low_above_open_or_close": 0
+    },
+    "volume_issues": {
+      "negative_volume": 0,
+      "zero_volume": 0
+    },
+    "tick_size": 0.25,
+    "tick_issues": {
+      "open": 0,
+      "high": 0,
+      "low": 0,
+      "close": 0
+    },
+    "interval_seconds": {
+      "mode": 3600.0,
+      "median": 3600.0,
+      "p95": 3600.0,
+      "top_counts": {
+        "3600.0": 10044,
+        "7200.0": 350,
+        "180000.0": 85,
+        "21600.0": 12,
+        "176400.0": 2,
+        "266400.0": 2,
+        "18000.0": 2,
+        "183600.0": 1,
+        "190800.0": 1,
+        "104400.0": 1,
+        "93600.0": 1,
+        "32400.0": 1,
+        "194400.0": 1
+      }
+    },
+    "large_gaps": [
+      {
+        "previous_date": "2024-03-28 20:00:00",
+        "date": "2024-03-31 22:00:00",
+        "gap_seconds": 266400.0
+      },
+      {
+        "previous_date": "2025-04-17 20:00:00",
+        "date": "2025-04-20 22:00:00",
+        "gap_seconds": 266400.0
+      },
+      {
+        "previous_date": "2025-07-04 16:00:00",
+        "date": "2025-07-06 22:00:00",
+        "gap_seconds": 194400.0
+      },
+      {
+        "previous_date": "2024-11-29 18:00:00",
+        "date": "2024-12-01 23:00:00",
+        "gap_seconds": 190800.0
+      },
+      {
+        "previous_date": "2024-11-01 20:00:00",
+        "date": "2024-11-03 23:00:00",
+        "gap_seconds": 183600.0
+      },
+      {
+        "previous_date": "2025-09-26 20:00:00",
+        "date": "2025-09-28 22:00:00",
+        "gap_seconds": 180000.0
+      },
+      {
+        "previous_date": "2025-09-19 20:00:00",
+        "date": "2025-09-21 22:00:00",
+        "gap_seconds": 180000.0
+      },
+      {
+        "previous_date": "2024-02-16 21:00:00",
+        "date": "2024-02-18 23:00:00",
+        "gap_seconds": 180000.0
+      },
+      {
+        "previous_date": "2024-02-02 21:00:00",
+        "date": "2024-02-04 23:00:00",
+        "gap_seconds": 180000.0
+      },
+      {
+        "previous_date": "2025-08-22 20:00:00",
+        "date": "2025-08-24 22:00:00",
+        "gap_seconds": 180000.0
+      },
+      {
+        "previous_date": "2025-08-15 20:00:00",
+        "date": "2025-08-17 22:00:00",
+        "gap_seconds": 180000.0
+      },
+      {
+        "previous_date": "2025-04-04 20:00:00",
+        "date": "2025-04-06 22:00:00",
+        "gap_seconds": 180000.0
+      },
+      {
+        "previous_date": "2025-09-12 20:00:00",
+        "date": "2025-09-14 22:00:00",
+        "gap_seconds": 180000.0
+      },
+      {
+        "previous_date": "2024-02-09 21:00:00",
+        "date": "2024-02-11 23:00:00",
+        "gap_seconds": 180000.0
+      },
+      {
+        "previous_date": "2025-08-08 20:00:00",
+        "date": "2025-08-10 22:00:00",
+        "gap_seconds": 180000.0
+      },
+      {
+        "previous_date": "2025-07-18 20:00:00",
+        "date": "2025-07-20 22:00:00",
+        "gap_seconds": 180000.0
+      },
+      {
+        "previous_date": "2025-07-11 20:00:00",
+        "date": "2025-07-13 22:00:00",
+        "gap_seconds": 180000.0
+      },
+      {
+        "previous_date": "2025-07-25 20:00:00",
+        "date": "2025-07-27 22:00:00",
+        "gap_seconds": 180000.0
+      },
+      {
+        "previous_date": "2025-08-01 20:00:00",
+        "date": "2025-08-03 22:00:00",
+        "gap_seconds": 180000.0
+      },
+      {
+        "previous_date": "2025-06-13 20:00:00",
+        "date": "2025-06-15 22:00:00",
+        "gap_seconds": 180000.0
+      },
+      {
+        "previous_date": "2024-03-01 21:00:00",
+        "date": "2024-03-03 23:00:00",
+        "gap_seconds": 180000.0
+      },
+      {
+        "previous_date": "2025-06-06 20:00:00",
+        "date": "2025-06-08 22:00:00",
+        "gap_seconds": 180000.0
+      },
+      {
+        "previous_date": "2024-02-23 21:00:00",
+        "date": "2024-02-25 23:00:00",
+        "gap_seconds": 180000.0
+      },
+      {
+        "previous_date": "2025-05-30 20:00:00",
+        "date": "2025-06-01 22:00:00",
+        "gap_seconds": 180000.0
+      },
+      {
+        "previous_date": "2025-05-09 20:00:00",
+        "date": "2025-05-11 22:00:00",
+        "gap_seconds": 180000.0
+      }
+    ],
+    "rows_by_year": {
+      "2024": 5920,
+      "2025": 4584
+    },
+    "rows_by_month": {
+      "2024-01": 503,
+      "2024-02": 479,
+      "2024-03": 461,
+      "2024-04": 506,
+      "2024-05": 523,
+      "2024-06": 458,
+      "2024-07": 522,
+      "2024-08": 504,
+      "2024-09": 481,
+      "2024-10": 529,
+      "2024-11": 474,
+      "2024-12": 480,
+      "2025-01": 495,
+      "2025-02": 456,
+      "2025-03": 485,
+      "2025-04": 483,
+      "2025-05": 500,
+      "2025-06": 481,
+      "2025-07": 522,
+      "2025-08": 483,
+      "2025-09": 502,
+      "2025-10": 177
+    }
+  },
+  "intraday_reference": {
+    "status": "mismatch",
+    "comparison": "candidate_1m_resampled_to_60m_vs_reference_60m",
+    "overlap_rows": 9981,
+    "all_ohlc_within_tolerance_rows": 7300,
+    "tolerance_points": 0.25,
+    "max_abs_ohlc_diff": 498.25,
+    "diffs": {
+      "open": {
+        "max_abs": 310.75,
+        "mean_abs": 13.776249874762048,
+        "within_tolerance_count": 8510
+      },
+      "high": {
+        "max_abs": 320.25,
+        "mean_abs": 13.60955816050496,
+        "within_tolerance_count": 9116
+      },
+      "low": {
+        "max_abs": 498.25,
+        "mean_abs": 13.82369001102094,
+        "within_tolerance_count": 9082
+      },
+      "close": {
+        "max_abs": 305.5,
+        "mean_abs": 13.676710750425809,
+        "within_tolerance_count": 8424
+      }
+    },
+    "close_offset_points": {
+      "mean": 13.458596333032762,
+      "std": 56.001713626474555,
+      "min": -105.5,
+      "max": 305.5
+    },
+    "close_delta_comparison": {
+      "correlation": 0.9818746219752372,
+      "mean_abs_delta_diff": 0.9826402805611223,
+      "max_abs_delta_diff": 296.5,
+      "within_1_point_count": 8994,
+      "delta_rows": 9980
+    },
+    "first_overlap": "2024-01-12 05:00:00",
+    "last_overlap": "2025-10-10 15:00:00"
+  },
+  "daily_reference": {
+    "status": "mismatch",
+    "comparison": "candidate_1m_session_daily_vs_reference_daily",
+    "overlap_rows": 448,
+    "all_ohlc_within_tolerance_rows": 1,
+    "tolerance_points": 0.25,
+    "max_abs_ohlc_diff": 1171.75,
+    "diffs": {
+      "open": {
+        "max_abs": 1081.75,
+        "mean_abs": 70.94140625,
+        "within_tolerance_count": 89
+      },
+      "high": {
+        "max_abs": 887.5,
+        "mean_abs": 43.52622767857143,
+        "within_tolerance_count": 220
+      },
+      "low": {
+        "max_abs": 1171.75,
+        "mean_abs": 49.283482142857146,
+        "within_tolerance_count": 226
+      },
+      "close": {
+        "max_abs": 1081.0,
+        "mean_abs": 76.97317068917411,
+        "within_tolerance_count": 4
+      }
+    },
+    "close_offset_points": {
+      "mean": 16.932364327566965,
+      "std": 129.1925979936173,
+      "min": -410.5,
+      "max": 1081.0
+    },
+    "close_delta_comparison": {
+      "correlation": 0.8196302551333524,
+      "mean_abs_delta_diff": 97.47192218959732,
+      "max_abs_delta_diff": 872.01953125,
+      "within_1_point_count": 6,
+      "delta_rows": 447
+    },
+    "first_overlap": "2024-01-02 00:00:00",
+    "last_overlap": "2025-10-10 00:00:00"
+  },
+  "verdict": {
+    "approved_for_model_use": false,
+    "label": "do_not_use_yet",
+    "blockers": [],
+    "warnings": [
+      "Candidate differs from Yahoo 60m reference on overlapping hourly bars",
+      "Candidate differs from Yahoo daily reference on overlapping sessions"
+    ]
+  }
+}

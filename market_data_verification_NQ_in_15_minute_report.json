@@ -1,0 +1,313 @@
+{
+  "meta": {
+    "input": "NQ_in_15_minute.csv",
+    "raw_rows": 6739,
+    "original_columns": [
+      "datetime",
+      "symbol",
+      "open",
+      "high",
+      "low",
+      "close",
+      "volume"
+    ],
+    "clean_columns": [
+      "datetime",
+      "symbol",
+      "open",
+      "high",
+      "low",
+      "close",
+      "volume"
+    ],
+    "datetime_column": "datetime",
+    "open_column": "open",
+    "high_column": "high",
+    "low_column": "low",
+    "close_column": "close",
+    "volume_column": "volume",
+    "input_timezone": "UTC",
+    "datetime_parse_failures": 0,
+    "timezone_localization_failures": 0
+  },
+  "quality": {
+    "rows": 6739,
+    "start": "2025-06-30 22:00:00",
+    "end": "2025-10-10 15:15:00",
+    "duplicate_timestamps": 0,
+    "null_counts": {
+      "date": 0,
+      "open": 0,
+      "high": 0,
+      "low": 0,
+      "close": 0,
+      "adj_close": 0,
+      "volume": 0
+    },
+    "ohlc_issues": {
+      "high_less_than_low": 0,
+      "high_below_open_or_close": 0,
+      "low_above_open_or_close": 0
+    },
+    "volume_issues": {
+      "negative_volume": 0,
+      "zero_volume": 0
+    },
+    "tick_size": 0.25,
+    "tick_issues": {
+      "open": 0,
+      "high": 0,
+      "low": 0,
+      "close": 0
+    },
+    "interval_seconds": {
+      "mode": 900.0,
+      "median": 900.0,
+      "p95": 900.0,
+      "top_counts": {
+        "900.0": 6665,
+        "4500.0": 57,
+        "177300.0": 13,
+        "18000.0": 1,
+        "191700.0": 1,
+        "18900.0": 1
+      }
+    },
+    "large_gaps": [
+      {
+        "previous_date": "2025-07-04 16:45:00",
+        "date": "2025-07-06 22:00:00",
+        "gap_seconds": 191700.0
+      },
+      {
+        "previous_date": "2025-07-11 20:45:00",
+        "date": "2025-07-13 22:00:00",
+        "gap_seconds": 177300.0
+      },
+      {
+        "previous_date": "2025-09-05 20:45:00",
+        "date": "2025-09-07 22:00:00",
+        "gap_seconds": 177300.0
+      },
+      {
+        "previous_date": "2025-08-22 20:45:00",
+        "date": "2025-08-24 22:00:00",
+        "gap_seconds": 177300.0
+      },
+      {
+        "previous_date": "2025-08-15 20:45:00",
+        "date": "2025-08-17 22:00:00",
+        "gap_seconds": 177300.0
+      },
+      {
+        "previous_date": "2025-08-08 20:45:00",
+        "date": "2025-08-10 22:00:00",
+        "gap_seconds": 177300.0
+      },
+      {
+        "previous_date": "2025-08-01 20:45:00",
+        "date": "2025-08-03 22:00:00",
+        "gap_seconds": 177300.0
+      },
+      {
+        "previous_date": "2025-07-25 20:45:00",
+        "date": "2025-07-27 22:00:00",
+        "gap_seconds": 177300.0
+      },
+      {
+        "previous_date": "2025-07-18 20:45:00",
+        "date": "2025-07-20 22:00:00",
+        "gap_seconds": 177300.0
+      },
+      {
+        "previous_date": "2025-09-19 20:45:00",
+        "date": "2025-09-21 22:00:00",
+        "gap_seconds": 177300.0
+      },
+      {
+        "previous_date": "2025-09-12 20:45:00",
+        "date": "2025-09-14 22:00:00",
+        "gap_seconds": 177300.0
+      },
+      {
+        "previous_date": "2025-10-03 20:45:00",
+        "date": "2025-10-05 22:00:00",
+        "gap_seconds": 177300.0
+      },
+      {
+        "previous_date": "2025-09-26 20:45:00",
+        "date": "2025-09-28 22:00:00",
+        "gap_seconds": 177300.0
+      },
+      {
+        "previous_date": "2025-08-29 20:45:00",
+        "date": "2025-08-31 22:00:00",
+        "gap_seconds": 177300.0
+      },
+      {
+        "previous_date": "2025-09-01 16:45:00",
+        "date": "2025-09-01 22:00:00",
+        "gap_seconds": 18900.0
+      },
+      {
+        "previous_date": "2025-07-03 17:00:00",
+        "date": "2025-07-03 22:00:00",
+        "gap_seconds": 18000.0
+      },
+      {
+        "previous_date": "2025-07-01 20:45:00",
+        "date": "2025-07-01 22:00:00",
+        "gap_seconds": 4500.0
+      },
+      {
+        "previous_date": "2025-07-10 20:45:00",
+        "date": "2025-07-10 22:00:00",
+        "gap_seconds": 4500.0
+      },
+      {
+        "previous_date": "2025-07-09 20:45:00",
+        "date": "2025-07-09 22:00:00",
+        "gap_seconds": 4500.0
+      },
+      {
+        "previous_date": "2025-07-08 20:45:00",
+        "date": "2025-07-08 22:00:00",
+        "gap_seconds": 4500.0
+      },
+      {
+        "previous_date": "2025-07-07 20:45:00",
+        "date": "2025-07-07 22:00:00",
+        "gap_seconds": 4500.0
+      },
+      {
+        "previous_date": "2025-07-02 20:45:00",
+        "date": "2025-07-02 22:00:00",
+        "gap_seconds": 4500.0
+      },
+      {
+        "previous_date": "2025-07-23 20:45:00",
+        "date": "2025-07-23 22:00:00",
+        "gap_seconds": 4500.0
+      },
+      {
+        "previous_date": "2025-07-17 20:45:00",
+        "date": "2025-07-17 22:00:00",
+        "gap_seconds": 4500.0
+      },
+      {
+        "previous_date": "2025-07-14 20:45:00",
+        "date": "2025-07-14 22:00:00",
+        "gap_seconds": 4500.0
+      }
+    ],
+    "rows_by_year": {
+      "2025": 6739
+    },
+    "rows_by_month": {
+      "2025-06": 8,
+      "2025-07": 2085,
+      "2025-08": 1932,
+      "2025-09": 2008,
+      "2025-10": 706
+    }
+  },
+  "intraday_reference": {
+    "status": "mismatch",
+    "comparison": "candidate_1m_resampled_to_60m_vs_reference_60m",
+    "overlap_rows": 1623,
+    "all_ohlc_within_tolerance_rows": 1224,
+    "tolerance_points": 0.25,
+    "max_abs_ohlc_diff": 310.0,
+    "diffs": {
+      "open": {
+        "max_abs": 246.5,
+        "mean_abs": 3.824399260628466,
+        "within_tolerance_count": 1436
+      },
+      "high": {
+        "max_abs": 256.75,
+        "mean_abs": 3.268484288354898,
+        "within_tolerance_count": 1556
+      },
+      "low": {
+        "max_abs": 310.0,
+        "mean_abs": 5.107670979667283,
+        "within_tolerance_count": 1534
+      },
+      "close": {
+        "max_abs": 255.75,
+        "mean_abs": 3.7207332101047443,
+        "within_tolerance_count": 1426
+      }
+    },
+    "close_offset_points": {
+      "mean": 3.4178989525569934,
+      "std": 28.73113488744802,
+      "min": -21.5,
+      "max": 255.75
+    },
+    "close_delta_comparison": {
+      "correlation": 0.9440659908269918,
+      "mean_abs_delta_diff": 1.3193588162762022,
+      "max_abs_delta_diff": 241.5,
+      "within_1_point_count": 1489,
+      "delta_rows": 1622
+    },
+    "first_overlap": "2025-06-30 22:00:00",
+    "last_overlap": "2025-10-10 15:00:00"
+  },
+  "daily_reference": {
+    "status": "mismatch",
+    "comparison": "candidate_1m_session_daily_vs_reference_daily",
+    "overlap_rows": 73,
+    "all_ohlc_within_tolerance_rows": 1,
+    "tolerance_points": 0.25,
+    "max_abs_ohlc_diff": 822.25,
+    "diffs": {
+      "open": {
+        "max_abs": 266.25,
+        "mean_abs": 51.92123287671233,
+        "within_tolerance_count": 15
+      },
+      "high": {
+        "max_abs": 260.5,
+        "mean_abs": 32.304794520547944,
+        "within_tolerance_count": 40
+      },
+      "low": {
+        "max_abs": 822.25,
+        "mean_abs": 36.50342465753425,
+        "within_tolerance_count": 44
+      },
+      "close": {
+        "max_abs": 662.5,
+        "mean_abs": 59.45451626712329,
+        "within_tolerance_count": 1
+      }
+    },
+    "close_offset_points": {
+      "mean": 13.954516267123287,
+      "std": 108.44472128244077,
+      "min": -132.75,
+      "max": 662.5
+    },
+    "close_delta_comparison": {
+      "correlation": 0.8063292351183541,
+      "mean_abs_delta_diff": 67.68402777777777,
+      "max_abs_delta_diff": 736.25,
+      "within_1_point_count": 2,
+      "delta_rows": 72
+    },
+    "first_overlap": "2025-07-01 00:00:00",
+    "last_overlap": "2025-10-10 00:00:00"
+  },
+  "verdict": {
+    "approved_for_model_use": false,
+    "label": "do_not_use_yet",
+    "blockers": [],
+    "warnings": [
+      "Candidate differs from Yahoo 60m reference on overlapping hourly bars",
+      "Candidate differs from Yahoo daily reference on overlapping sessions"
+    ]
+  }
+}

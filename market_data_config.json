@@ -1,7 +1,7 @@
 {
   "default_source": "yahoo",
   "active_market_data_file": "NQ_5min_data.csv",
-  "active_profiles_file": "macro_reaction_profiles_5m.csv",
+  "active_profiles_file": "macro_reaction_profiles_60m.csv",
   "yahoo": {
     "enabled": true,
     "ticker": "NQ=F",

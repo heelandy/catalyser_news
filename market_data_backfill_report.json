@@ -1,0 +1,148 @@
+{
+  "ticker": "NQ=F",
+  "desired_start": "2020-01-01 00:00:00",
+  "desired_end": "2026-06-07 00:00:00",
+  "as_of": "2026-06-07 00:00:00",
+  "notes": [
+    "This module only plans/executes market-data backfills.",
+    "Use futures_data_adapter.py to normalize/merge successful external exports.",
+    "Yahoo intraday history has hard lookback limits; old intraday gaps require an external vendor/export."
+  ],
+  "ranges": [
+    {
+      "interval": "1m",
+      "path": "NQ_1min_data.csv",
+      "rows": 7860,
+      "start": "2026-05-29 04:09:00",
+      "end": "2026-06-05 20:59:00",
+      "exists": true,
+      "error": ""
+    },
+    {
+      "interval": "5m",
+      "path": "NQ_5min_data.csv",
+      "rows": 13552,
+      "start": "2026-03-26 04:05:00",
+      "end": "2026-06-05 20:55:00",
+      "exists": true,
+      "error": ""
+    },
+    {
+      "interval": "15m",
+      "path": "NQ_15min_data.csv",
+      "rows": 4537,
+      "start": "2026-03-26 04:00:00",
+      "end": "2026-06-05 20:45:00",
+      "exists": true,
+      "error": ""
+    },
+    {
+      "interval": "60m",
+      "path": "NQ_60min_data.csv",
+      "rows": 13680,
+      "start": "2024-01-12 05:00:00",
+      "end": "2026-06-05 20:00:00",
+      "exists": true,
+      "error": ""
+    }
+  ],
+  "plan": [
+    {
+      "interval": "1m",
+      "file": "NQ_1min_data.csv",
+      "file_exists": true,
+      "rows": 7860,
+      "file_start": "2026-05-29 04:09:00",
+      "file_end": "2026-06-05 20:59:00",
+      "missing_start": "2020-01-01 00:00:00",
+      "missing_end": "2026-05-29 04:09:00",
+      "status": "external_required",
+      "note": "Yahoo 1m history is limited to about 7 days."
+    },
+    {
+      "interval": "1m",
+      "file": "NQ_1min_data.csv",
+      "file_exists": true,
+      "rows": 7860,
+      "file_start": "2026-05-29 04:09:00",
+      "file_end": "2026-06-05 20:59:00",
+      "missing_start": "2026-06-05 20:59:00",
+      "missing_end": "2026-06-07 00:00:00",
+      "status": "yahoo_eligible",
+      "note": "Range is inside Yahoo's usual intraday availability window."
+    },
+    {
+      "interval": "5m",
+      "file": "NQ_5min_data.csv",
+      "file_exists": true,
+      "rows": 13552,
+      "file_start": "2026-03-26 04:05:00",
+      "file_end": "2026-06-05 20:55:00",
+      "missing_start": "2020-01-01 00:00:00",
+      "missing_end": "2026-03-26 04:05:00",
+      "status": "external_required",
+      "note": "Yahoo 5m history is limited to about 60 days."
+    },
+    {
+      "interval": "5m",
+      "file": "NQ_5min_data.csv",
+      "file_exists": true,
+      "rows": 13552,
+      "file_start": "2026-03-26 04:05:00",
+      "file_end": "2026-06-05 20:55:00",
+      "missing_start": "2026-06-05 20:55:00",
+      "missing_end": "2026-06-07 00:00:00",
+      "status": "yahoo_eligible",
+      "note": "Range is inside Yahoo's usual intraday availability window."
+    },
+    {
+      "interval": "15m",
+      "file": "NQ_15min_data.csv",
+      "file_exists": true,
+      "rows": 4537,
+      "file_start": "2026-03-26 04:00:00",
+      "file_end": "2026-06-05 20:45:00",
+      "missing_start": "2020-01-01 00:00:00",
+      "missing_end": "2026-03-26 04:00:00",
+      "status": "external_required",
+      "note": "Yahoo 15m history is limited to about 60 days."
+    },
+    {
+      "interval": "15m",
+      "file": "NQ_15min_data.csv",
+      "file_exists": true,
+      "rows": 4537,
+      "file_start": "2026-03-26 04:00:00",
+      "file_end": "2026-06-05 20:45:00",
+      "missing_start": "2026-06-05 20:45:00",
+      "missing_end": "2026-06-07 00:00:00",
+      "status": "yahoo_eligible",
+      "note": "Range is inside Yahoo's usual intraday availability window."
+    },
+    {
+      "interval": "60m",
+      "file": "NQ_60min_data.csv",
+      "file_exists": true,
+      "rows": 13680,
+      "file_start": "2024-01-12 05:00:00",
+      "file_end": "2026-06-05 20:00:00",
+      "missing_start": "2020-01-01 00:00:00",
+      "missing_end": "2024-01-12 05:00:00",
+      "status": "external_required",
+      "note": "Yahoo 60m history is limited to about 730 days."
+    },
+    {
+      "interval": "60m",
+      "file": "NQ_60min_data.csv",
+      "file_exists": true,
+      "rows": 13680,
+      "file_start": "2024-01-12 05:00:00",
+      "file_end": "2026-06-05 20:00:00",
+      "missing_start": "2026-06-05 20:00:00",
+      "missing_end": "2026-06-07 00:00:00",
+      "status": "yahoo_eligible",
+      "note": "Range is inside Yahoo's usual intraday availability window."
+    }
+  ],
+  "execution": []
+}

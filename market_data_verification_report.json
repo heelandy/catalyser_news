@@ -1,0 +1,360 @@
+{
+  "meta": {
+    "input": "Dataset_NQ_1min_2022_2025.csv",
+    "raw_rows": 1048575,
+    "original_columns": [
+      "timestamp ET",
+      "open",
+      "high",
+      "low",
+      "close",
+      "volume",
+      "Vwap_RTH",
+      "Vwap_ETH"
+    ],
+    "clean_columns": [
+      "timestamp_et",
+      "open",
+      "high",
+      "low",
+      "close",
+      "volume",
+      "vwap_rth",
+      "vwap_eth"
+    ],
+    "datetime_column": "timestamp_et",
+    "open_column": "open",
+    "high_column": "high",
+    "low_column": "low",
+    "close_column": "close",
+    "volume_column": "volume",
+    "input_timezone": "America/New_York",
+    "datetime_parse_failures": 0,
+    "timezone_localization_failures": 0
+  },
+  "quality": {
+    "rows": 1048575,
+    "start": "2022-12-26 23:01:00",
+    "end": "2025-12-12 01:52:00",
+    "duplicate_timestamps": 0,
+    "null_counts": {
+      "date": 0,
+      "open": 0,
+      "high": 0,
+      "low": 0,
+      "close": 0,
+      "adj_close": 0,
+      "volume": 0
+    },
+    "ohlc_issues": {
+      "high_less_than_low": 0,
+      "high_below_open_or_close": 0,
+      "low_above_open_or_close": 0
+    },
+    "volume_issues": {
+      "negative_volume": 0,
+      "zero_volume": 0
+    },
+    "tick_size": 0.25,
+    "tick_issues": {
+      "open": 0,
+      "high": 0,
+      "low": 0,
+      "close": 0
+    },
+    "interval_seconds": {
+      "mode": 60.0,
+      "median": 60.0,
+      "p95": 60.0,
+      "top_counts": {
+        "60.0": 1047664,
+        "3660.0": 583,
+        "176460.0": 137,
+        "120.0": 127,
+        "18060.0": 20,
+        "180.0": 8,
+        "262860.0": 5,
+        "172860.0": 3,
+        "17160.0": 3,
+        "180060.0": 3,
+        "189960.0": 3,
+        "240.0": 3,
+        "21480.0": 1,
+        "204360.0": 1,
+        "360.0": 1
+      }
+    },
+    "large_gaps": [
+      {
+        "previous_date": "2025-04-17 21:00:00",
+        "date": "2025-04-20 22:01:00",
+        "gap_seconds": 262860.0
+      },
+      {
+        "previous_date": "2023-12-22 22:00:00",
+        "date": "2023-12-25 23:01:00",
+        "gap_seconds": 262860.0
+      },
+      {
+        "previous_date": "2022-12-30 22:00:00",
+        "date": "2023-01-02 23:01:00",
+        "gap_seconds": 262860.0
+      },
+      {
+        "previous_date": "2024-03-28 21:00:00",
+        "date": "2024-03-31 22:01:00",
+        "gap_seconds": 262860.0
+      },
+      {
+        "previous_date": "2023-12-29 22:00:00",
+        "date": "2024-01-01 23:01:00",
+        "gap_seconds": 262860.0
+      },
+      {
+        "previous_date": "2023-04-07 13:15:00",
+        "date": "2023-04-09 22:01:00",
+        "gap_seconds": 204360.0
+      },
+      {
+        "previous_date": "2025-07-04 17:00:00",
+        "date": "2025-07-06 22:01:00",
+        "gap_seconds": 190860.0
+      },
+      {
+        "previous_date": "2025-11-28 18:15:00",
+        "date": "2025-11-30 23:01:00",
+        "gap_seconds": 189960.0
+      },
+      {
+        "previous_date": "2024-11-29 18:15:00",
+        "date": "2024-12-01 23:01:00",
+        "gap_seconds": 189960.0
+      },
+      {
+        "previous_date": "2023-11-24 18:15:00",
+        "date": "2023-11-26 23:01:00",
+        "gap_seconds": 189960.0
+      },
+      {
+        "previous_date": "2025-10-31 21:00:00",
+        "date": "2025-11-02 23:01:00",
+        "gap_seconds": 180060.0
+      },
+      {
+        "previous_date": "2023-11-03 21:00:00",
+        "date": "2023-11-05 23:01:00",
+        "gap_seconds": 180060.0
+      },
+      {
+        "previous_date": "2024-11-01 21:00:00",
+        "date": "2024-11-03 23:01:00",
+        "gap_seconds": 180060.0
+      },
+      {
+        "previous_date": "2024-06-21 21:00:00",
+        "date": "2024-06-23 22:04:00",
+        "gap_seconds": 176640.0
+      },
+      {
+        "previous_date": "2025-04-25 21:00:00",
+        "date": "2025-04-27 22:01:00",
+        "gap_seconds": 176460.0
+      },
+      {
+        "previous_date": "2023-02-10 22:00:00",
+        "date": "2023-02-12 23:01:00",
+        "gap_seconds": 176460.0
+      },
+      {
+        "previous_date": "2025-04-11 21:00:00",
+        "date": "2025-04-13 22:01:00",
+        "gap_seconds": 176460.0
+      },
+      {
+        "previous_date": "2025-11-07 22:00:00",
+        "date": "2025-11-09 23:01:00",
+        "gap_seconds": 176460.0
+      },
+      {
+        "previous_date": "2023-01-13 22:00:00",
+        "date": "2023-01-15 23:01:00",
+        "gap_seconds": 176460.0
+      },
+      {
+        "previous_date": "2025-05-16 21:00:00",
+        "date": "2025-05-18 22:01:00",
+        "gap_seconds": 176460.0
+      },
+      {
+        "previous_date": "2025-05-23 21:00:00",
+        "date": "2025-05-25 22:01:00",
+        "gap_seconds": 176460.0
+      },
+      {
+        "previous_date": "2023-01-20 22:00:00",
+        "date": "2023-01-22 23:01:00",
+        "gap_seconds": 176460.0
+      },
+      {
+        "previous_date": "2025-05-09 21:00:00",
+        "date": "2025-05-11 22:01:00",
+        "gap_seconds": 176460.0
+      },
+      {
+        "previous_date": "2023-03-03 22:00:00",
+        "date": "2023-03-05 23:01:00",
+        "gap_seconds": 176460.0
+      },
+      {
+        "previous_date": "2023-02-24 22:00:00",
+        "date": "2023-02-26 23:01:00",
+        "gap_seconds": 176460.0
+      }
+    ],
+    "rows_by_year": {
+      "2022": 5517,
+      "2023": 353092,
+      "2024": 354965,
+      "2025": 335001
+    },
+    "rows_by_month": {
+      "2022-12": 5517,
+      "2023-01": 28795,
+      "2023-02": 27356,
+      "2023-03": 31680,
+      "2023-04": 26951,
+      "2023-05": 31497,
+      "2023-06": 29984,
+      "2023-07": 28628,
+      "2023-08": 31737,
+      "2023-09": 28615,
+      "2023-10": 30476,
+      "2023-11": 29834,
+      "2023-12": 27539,
+      "2024-01": 30177,
+      "2024-02": 28723,
+      "2024-03": 27659,
+      "2024-04": 30358,
+      "2024-05": 31372,
+      "2024-06": 27472,
+      "2024-07": 31253,
+      "2024-08": 30228,
+      "2024-09": 28845,
+      "2024-10": 31738,
+      "2024-11": 28395,
+      "2024-12": 28745,
+      "2025-01": 29651,
+      "2025-02": 27358,
+      "2025-03": 29097,
+      "2025-04": 28977,
+      "2025-05": 30001,
+      "2025-06": 28857,
+      "2025-07": 31271,
+      "2025-08": 28976,
+      "2025-09": 30113,
+      "2025-10": 31620,
+      "2025-11": 26547,
+      "2025-12": 12533
+    }
+  },
+  "intraday_reference": {
+    "status": "mismatch",
+    "comparison": "candidate_1m_resampled_to_60m_vs_reference_60m",
+    "overlap_rows": 10965,
+    "all_ohlc_within_tolerance_rows": 0,
+    "tolerance_points": 0.25,
+    "max_abs_ohlc_diff": 2439.5,
+    "diffs": {
+      "open": {
+        "max_abs": 1979.5,
+        "mean_abs": 1059.2222526219791,
+        "within_tolerance_count": 0
+      },
+      "high": {
+        "max_abs": 1966.0,
+        "mean_abs": 1059.3520380899454,
+        "within_tolerance_count": 0
+      },
+      "low": {
+        "max_abs": 2439.5,
+        "mean_abs": 1059.1917236662107,
+        "within_tolerance_count": 0
+      },
+      "close": {
+        "max_abs": 1987.5,
+        "mean_abs": 1059.252234382125,
+        "within_tolerance_count": 0
+      }
+    },
+    "close_offset_points": {
+      "mean": 1059.252234382125,
+      "std": 536.4599734694364,
+      "min": 35.5,
+      "max": 1987.5
+    },
+    "close_delta_comparison": {
+      "correlation": 0.9779547286021395,
+      "mean_abs_delta_diff": 5.576819591390004,
+      "max_abs_delta_diff": 296.0,
+      "within_1_point_count": 2455,
+      "delta_rows": 10964
+    },
+    "first_overlap": "2024-01-12 05:00:00",
+    "last_overlap": "2025-12-12 01:00:00"
+  },
+  "daily_reference": {
+    "status": "mismatch",
+    "comparison": "candidate_1m_session_daily_vs_reference_daily",
+    "overlap_rows": 747,
+    "all_ohlc_within_tolerance_rows": 0,
+    "tolerance_points": 0.25,
+    "max_abs_ohlc_diff": 2746.0,
+    "diffs": {
+      "open": {
+        "max_abs": 2659.0,
+        "mean_abs": 1524.3758366800535,
+        "within_tolerance_count": 0
+      },
+      "high": {
+        "max_abs": 2699.5,
+        "mean_abs": 1524.756358768407,
+        "within_tolerance_count": 0
+      },
+      "low": {
+        "max_abs": 2675.25,
+        "mean_abs": 1524.146921017403,
+        "within_tolerance_count": 0
+      },
+      "close": {
+        "max_abs": 2746.0,
+        "mean_abs": 1526.3882300033467,
+        "within_tolerance_count": 0
+      }
+    },
+    "close_offset_points": {
+      "mean": 1526.3882300033467,
+      "std": 776.2521228547419,
+      "min": 47.5,
+      "max": 2746.0
+    },
+    "close_delta_comparison": {
+      "correlation": 0.9425393022846738,
+      "mean_abs_delta_diff": 43.005655160857906,
+      "max_abs_delta_diff": 620.51953125,
+      "within_1_point_count": 21,
+      "delta_rows": 746
+    },
+    "first_overlap": "2022-12-27 00:00:00",
+    "last_overlap": "2025-12-12 00:00:00"
+  },
+  "verdict": {
+    "approved_for_model_use": false,
+    "label": "do_not_use_yet",
+    "blockers": [],
+    "warnings": [
+      "Row count is at or one row below Excel's worksheet limit; check for export truncation",
+      "Candidate differs from Yahoo 60m reference on overlapping hourly bars",
+      "Candidate differs from Yahoo daily reference on overlapping sessions"
+    ]
+  }
+}

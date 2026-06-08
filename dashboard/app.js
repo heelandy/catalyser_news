@@ -6,6 +6,25 @@ const DATA_PATHS = {
   alerts: "../macro_pipeline_alert_summary.json",
 };
 
+const DISPLAY_TIME_ZONE = "America/New_York";
+const DISPLAY_TIME_ZONE_LABEL = "ET";
+const TIME_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  timeZone: DISPLAY_TIME_ZONE,
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+const UTC_TIME_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  timeZone: "UTC",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
 const state = {
   signals: [],
   performance: [],
@@ -179,17 +198,42 @@ function plainNumber(value) {
   return Math.abs(n) >= 100 ? n.toFixed(0) : n.toFixed(2);
 }
 
-function formatTime(value) {
+function parseReleaseDate(value) {
   const text = clean(value, "");
   if (!text) {
-    return "--";
+    return null;
   }
-  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
-  if (!match) {
-    return text;
+  const looksIso = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(text);
+  const hasTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/.test(text);
+  const normalized = looksIso && !hasTimezone ? `${text}Z` : text;
+  const date = new Date(normalized);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function timeParts(formatter, date) {
+  return Object.fromEntries(formatter.formatToParts(date).map((part) => [part.type, part.value]));
+}
+
+function formatTime(value, options = {}) {
+  const text = clean(value, "");
+  const date = parseReleaseDate(text);
+  if (!date) {
+    return text || "--";
   }
-  const [, year, month, day, hour, minute] = match;
-  return `${month}/${day} ${hour}:${minute}`;
+  const parts = timeParts(TIME_FORMATTER, date);
+  const base = `${parts.month}/${parts.day} ${parts.hour}:${parts.minute}`;
+  return options.withZone === false ? base : `${base} ${DISPLAY_TIME_ZONE_LABEL}`;
+}
+
+function formatTimeTitle(value) {
+  const text = clean(value, "");
+  const date = parseReleaseDate(text);
+  if (!date) {
+    return text || "--";
+  }
+  const local = formatTime(text);
+  const utc = timeParts(UTC_TIME_FORMATTER, date);
+  return `${local} / ${utc.month}/${utc.day} ${utc.hour}:${utc.minute} UTC`;
 }
 
 function titleCase(value, fallback = "--") {
@@ -482,7 +526,7 @@ function renderProbabilityChart() {
         if (index % Math.ceil(plotPoints.length / 6) !== 0 && index !== plotPoints.length - 1) {
           return "";
         }
-        return `<text class="chart-label" x="${point.x.toFixed(1)}" y="${height - 16}" text-anchor="middle">${escapeHtml(formatTime(point.row.release_time))}</text>`;
+        return `<text class="chart-label" x="${point.x.toFixed(1)}" y="${height - 16}" text-anchor="middle">${escapeHtml(formatTime(point.row.release_time, { withZone: false }))}</text>`;
       }).join("")}
     </svg>
   `;
@@ -497,7 +541,7 @@ function renderSignals() {
   els.signalsBody.innerHTML = rows.length
     ? rows.map((row) => `
       <tr data-id="${escapeHtml(row.id)}" class="${row.id === state.selectedId ? "selected" : ""}">
-        <td>${formatTime(row.release_time)}</td>
+        <td title="${escapeHtml(formatTimeTitle(row.release_time))}">${formatTime(row.release_time)}</td>
         <td>
           <div class="title-cell">
             <strong title="${escapeHtml(clean(row.title))}">${escapeHtml(clean(row.title))}</strong>

@@ -37,6 +37,8 @@ UPLOAD_FILES = [
     "futures_data_adapter.py",
     "catalyser_news.py",
     "fetch_nq_yahoo.py",
+    "market_data_backfill.py",
+    "market_data_verify.py",
     "macro_reaction_study.py",
     "macro_signal_performance.py",
     "macro_signal_trust.py",
@@ -73,6 +75,11 @@ UPLOAD_FILES = [
     "macro_probability_validation.csv",
     "macro_timing_audit_report.json",
     "macro_timing_audit.csv",
+    "market_data_backfill_report.json",
+    "market_data_backfill_plan.csv",
+    "market_data_verification_report.json",
+    "market_data_verification_summary.csv",
+    "market_data_verification_nq_in_batch_summary.csv",
     "news_summary.csv",
     "NQ_1min_data.csv",
     "NQ_5min_data.csv",
@@ -80,6 +87,11 @@ UPLOAD_FILES = [
     "NQ_60min_data.csv",
     "NQ_F_daily.csv",
     "NQ_F_daily_clean.csv",
+]
+
+UPLOAD_PATTERNS = [
+    "market_data_verification_NQ_in_*_report.json",
+    "market_data_verification_NQ_in_*_summary.csv",
 ]
 
 
@@ -152,12 +164,28 @@ def parse_args() -> argparse.Namespace:
 
 def selected_files(root: Path) -> list[Path]:
     files = []
+    seen = set()
+
+    def add_file(path: Path) -> None:
+        rel = path.relative_to(root).as_posix()
+        if rel not in seen:
+            seen.add(rel)
+            files.append(path)
+
     for name in UPLOAD_FILES:
         path = root / name
         if path.exists() and path.is_file():
-            files.append(path)
+            add_file(path)
         else:
             print(f"skip missing: {name}")
+
+    for pattern in UPLOAD_PATTERNS:
+        matches = sorted(path for path in root.glob(pattern) if path.is_file())
+        if not matches:
+            print(f"skip missing pattern: {pattern}")
+        for path in matches:
+            add_file(path)
+
     return files
 
 

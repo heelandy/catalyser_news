@@ -1,5 +1,51 @@
 # Changelog
 
+## 1.0.4 - Multi-Timeframe Export Verification
+
+- Verified the new `NQ_in_*` TradingView-style CSV exports without merging them
+  into active model data.
+- Generated per-file verification reports and summaries for the intraday,
+  daily, weekly, and monthly exports.
+- Marked the new exports `do_not_use_yet` for active Yahoo-based modeling
+  because they failed the strict Yahoo reference gate, even though several
+  intraday files showed strong overlapping movement alignment.
+- Updated the verifier timestamp alignment after dropped rows and kept raw
+  platform exports out of Git while allowing small verification reports.
+
+## 1.0.3 - Market Data Verification
+
+- Added `market_data_verify.py` as a separate verification layer for newly
+  added market-data exports.
+- Verified `Dataset_NQ_1min_2022_2025.csv` without merging it into active
+  model data.
+- Generated `market_data_verification_report.json` and
+  `market_data_verification_summary.csv`.
+- Marked the candidate dataset `do_not_use_yet` because it failed Yahoo 60m and
+  daily reference comparisons and has an Excel-row-limit truncation warning.
+
+## 1.0.2 - Backfill Planner
+
+- Added `market_data_backfill.py` as a separate missing-range planner for
+  Yahoo/API backfills.
+- Generated `market_data_backfill_plan.csv` and
+  `market_data_backfill_report.json` for the desired 2020-to-current intraday
+  coverage.
+- Confirmed that the useful 2020 intraday gaps are outside Yahoo's 1m, 5m,
+  15m, and 60m lookback limits and require an external futures export/API.
+
+## 1.0.1 - Deeper Yahoo History Feed
+
+- Refreshed Yahoo NQ datasets with the intraday-deep preset and daily history.
+- Extracted archived Yahoo intraday files from `extra/catalyser_news_github_upload.zip`
+  and merged the older rows back into the active NQ CSVs.
+- Rebuilt 1-minute, 5-minute, and 60-minute macro reaction/profile artifacts.
+- Switched live calibration to `macro_reaction_profiles_60m.csv` so current
+  signals use the deeper 2024-2026 release sample.
+- Regenerated performance, trust, data-quality, timing, probability validation,
+  and alert artifacts from the refreshed historical set.
+- Updated the dashboard timestamp display to show release times in New York
+  market time (`ET`).
+
 ## 1.0.0 - Validation and Timing Controls
 
 - Activated `market_data_config.json` inside the pipeline runner for source,

@@ -5,6 +5,8 @@ Nasdaq futures (`NQ=F`) and for validating trading results. The system keeps
 each responsibility separate:
 
 - `fetch_nq_yahoo.py` downloads market OHLC data from Yahoo Finance.
+- `market_data_backfill.py` plans missing market-data ranges before download.
+- `market_data_verify.py` verifies newly added market-data exports before use.
 - `futures_data_adapter.py` normalizes deeper external futures CSV exports.
 - `catalyser_news.py` watches scheduled catalysts and live economic-calendar rows.
 - `macro_reaction_study.py` learns how NQ historically reacted to macro surprises.
@@ -71,6 +73,36 @@ python .\fetch_nq_yahoo.py --ticker ES=F --interval 5m --period 30d --out-csv ES
 python .\fetch_nq_yahoo.py --ticker NQ=F --interval 5m --start-date 2026-05-01 --end-date 2026-06-05 --out-csv NQ_custom_5m.csv
 ```
 
+Before requesting old data, create a backfill plan:
+
+```powershell
+python .\market_data_backfill.py --desired-start 2020-01-01 --desired-end 2026-06-07 --as-of 2026-06-07 --intervals 1m 5m 15m 60m
+```
+
+That writes:
+
+- `market_data_backfill_plan.csv`
+- `market_data_backfill_report.json`
+
+Use `--execute-yahoo` only for ranges marked `yahoo_eligible`. Ranges marked
+`external_required` need a broker/platform/API export and should then flow
+through `futures_data_adapter.py`.
+
+Verify a newly added external 1-minute dataset before use:
+
+```powershell
+python .\market_data_verify.py --input .\Dataset_NQ_1min_2022_2025.csv --datetime-column "timestamp ET" --input-timezone America/New_York --reference-intraday .\NQ_60min_data.csv --reference-daily .\NQ_F_daily.csv --report-output .\market_data_verification_report.json --summary-output .\market_data_verification_summary.csv --canonical-output .\NQ_external_1min_2022_2025_candidate.csv
+```
+
+Verify a TradingView-style export such as `NQ_in_1_hour.csv`:
+
+```powershell
+python .\market_data_verify.py --input .\NQ_in_1_hour.csv --datetime-column datetime --input-timezone UTC --expected-interval-seconds 3600 --reference-intraday .\NQ_60min_data.csv --reference-daily .\NQ_F_daily.csv --report-output .\market_data_verification_NQ_in_1_hour_report.json --summary-output .\market_data_verification_NQ_in_1_hour_summary.csv
+```
+
+Do not merge the candidate file into the active model until
+`market_data_verification_report.json` says it is approved for model use.
+
 The default command still preserves the older daily NQ files:
 
 ```powershell
@@ -86,6 +118,11 @@ market_data_config.json
 It keeps Yahoo active with `NQ=F`, uses the intraday preset as the working
 refresh path, and leaves `external_api.enabled` as `false` until you have a
 provider/API key.
+
+The active live calibration profile is currently
+`macro_reaction_profiles_60m.csv`, because Yahoo's 60-minute history reaches
+much further back than the 1-minute and 5-minute intraday files. The active
+market-data file remains `NQ_5min_data.csv` for timing and data-quality checks.
 
 When Yahoo's intraday limit is not enough, export deeper futures data from a
 broker, charting platform, or paid feed into `external_market_data/`, then
@@ -434,6 +471,8 @@ Those files are kept for reference, not deleted.
 | File | Purpose |
 | --- | --- |
 | `market_data_config.json` | Current market-data source selection; Yahoo is active by default. |
+| `market_data_backfill.py` | Separate missing-range planner for Yahoo/API backfills. |
+| `market_data_verify.py` | Separate verifier for newly added market-data exports. |
 | `MARKET_DATA_SOURCES.md` | Source-selection guide for deeper futures history. |
 | `fetch_nq_yahoo.py` | Dynamic Yahoo market-data downloader. |
 | `futures_data_adapter.py` | External futures CSV normalizer for deeper intraday data. |
@@ -461,6 +500,8 @@ Those files are kept for reference, not deleted.
 | `macro_data_quality_report.json` | Latest market-data quality report. |
 | `macro_probability_validation_report.json` | Latest probability validation summary. |
 | `macro_timing_audit_report.json` | Latest release/bar timing audit summary. |
+| `market_data_backfill_report.json` | Latest missing market-data range report. |
+| `market_data_verification_report.json` | Latest candidate market-data verification report. |
 | `extra/` | Archived side tools, private exports, and old generated artifacts. |
 | `requirements.txt` | Python dependencies. |
 
@@ -470,6 +511,9 @@ Generated market files such as `NQ_1min_data.csv`, `NQ_5min_data.csv`, and
 `macro_reaction_profiles_5m.csv` are reproducible research artifacts. Private
 broker exports such as raw fills, order-history exports, and account journals
 should stay local unless you intentionally want them in a public repository.
+Large vendor/export datasets such as `Dataset_*.csv`, `NQ_in_*.csv`, and
+candidate normalized files such as `NQ_external_*candidate.csv` are ignored by
+Git.
 
 ## Current Pipeline Status
 
@@ -479,18 +523,48 @@ As of the latest local run:
 - `NQ_5min_data.csv`: 13,552 rows from 2026-03-26 04:05 to 2026-06-05 20:55.
 - `NQ_15min_data.csv`: 4,537 rows from 2026-03-26 04:00 to 2026-06-05 20:45.
 - `NQ_60min_data.csv`: 13,680 rows from 2024-01-12 05:00 to 2026-06-05 20:00.
+- `NQ_F_daily.csv`: 2,515 rows from 2016-06-07 to 2026-06-05.
 - Yahoo rejected 30 days of 1-minute NQ data and reported that only about 8
   days of 1m granularity are available per request.
+- `extra/catalyser_news_github_upload.zip` contained archived Yahoo intraday
+  files. Those were extracted to `extra/archived_yahoo_intraday/` and merged
+  into the active root NQ CSVs.
+- No 2020 intraday OHLC file was found in `extra/`; the only 2020-capable NQ
+  market file there is daily data.
+- `market_data_backfill.py` confirms that the useful 2020-to-current intraday
+  gaps are `external_required`: Yahoo cannot backfill 1m/5m/15m/60m data that
+  old.
+- `Dataset_NQ_1min_2022_2025.csv` was verified but is not approved for model
+  use yet. The file has 1,048,575 rows from 2022-12-26 23:01 UTC to
+  2025-12-12 01:52 UTC, clean OHLC structure, no duplicate timestamps, and
+  60-second interval mode. It failed Yahoo 60m and daily reference comparisons,
+  and the row count is at Excel's worksheet limit, so it may be truncated or
+  differently adjusted.
+- `NQ_in_*` TradingView-style exports were verified separately and are not
+  approved for active model use yet. The files have clean OHLC structure, valid
+  0.25-point ticks, and no duplicate timestamps, but every file failed the
+  strict Yahoo reference gate. The best-aligned intraday candidates were
+  `NQ_in_1_hour.csv` with 7,300 of 9,981 overlapping hourly bars within 0.25
+  points, `NQ_in_30_minute.csv` with 3,168 of 4,464, and
+  `NQ_in_15_minute.csv` with 1,224 of 1,623. Treat them as a separate
+  TradingView/NQ1! source until roll and session-close differences are modeled.
+  See `market_data_verification_nq_in_batch_summary.csv` for the full matrix.
 - `futures_data_adapter.py` can now normalize deeper external futures exports
   into the same OHLC schema used by the reaction study.
-- `macro_reaction_study.py` clustered 51 TradingView U.S. macro event rows into
-  37 release moments and produced smoothed 5-minute reaction profiles.
+- The 1-minute study produced 7 reaction rows and 5 profile rows.
+- The 5-minute study produced 38 reaction rows and 25 profile rows.
 - The deeper 60-minute study fetched 381 high-importance TradingView event rows,
   clustered them into 282 release moments, and produced 85 profile rows.
+- `market_data_config.json` now points live calibration to
+  `macro_reaction_profiles_60m.csv` so the live signal benefits from those 282
+  release moments.
 - `macro_signal_performance.py` produced 24 graded signal/source rows and 51
   performance summary rows from the current 1m, 5m, and 60m reaction sets.
 - `macro_signal_trust.py` produced 51 trust-weight rows and 14 trust-adjusted
   live signal rows.
+- `macro_probability_validation.py` now reports 54.2% primary directional
+  accuracy, 0.227 Brier score, and 0.004 bullish calibration error on the
+  current 24 graded rows.
 - Confidence scoring now caps weak, low-sample, whipsaw-heavy, fallback, or
   low-reliability signals more strictly before they reach the dashboard.
 - `macro_data_quality.py`, `macro_probability_validation.py`, and

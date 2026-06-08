@@ -5,9 +5,9 @@
   },
   "bar_interval_seconds_mode": 300.0,
   "event_count": 14,
-  "events_file": ".\\macro_releases.csv",
+  "events_file": "macro_releases.csv",
   "in_range_event_count": 8,
-  "market_data": ".\\NQ_5min_data.csv",
+  "market_data": "NQ_5min_data.csv",
   "market_end": "2026-06-05 20:55:00",
   "market_start": "2026-03-26 04:05:00",
   "nearest_abs_delay_minutes": {

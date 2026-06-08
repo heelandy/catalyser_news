@@ -1,0 +1,9 @@
+interval,file,file_exists,rows,file_start,file_end,missing_start,missing_end,status,note
+1m,NQ_1min_data.csv,True,7860,2026-05-29 04:09:00,2026-06-05 20:59:00,2020-01-01 00:00:00,2026-05-29 04:09:00,external_required,Yahoo 1m history is limited to about 7 days.
+1m,NQ_1min_data.csv,True,7860,2026-05-29 04:09:00,2026-06-05 20:59:00,2026-06-05 20:59:00,2026-06-07 00:00:00,yahoo_eligible,Range is inside Yahoo's usual intraday availability window.
+5m,NQ_5min_data.csv,True,13552,2026-03-26 04:05:00,2026-06-05 20:55:00,2020-01-01 00:00:00,2026-03-26 04:05:00,external_required,Yahoo 5m history is limited to about 60 days.
+5m,NQ_5min_data.csv,True,13552,2026-03-26 04:05:00,2026-06-05 20:55:00,2026-06-05 20:55:00,2026-06-07 00:00:00,yahoo_eligible,Range is inside Yahoo's usual intraday availability window.
+15m,NQ_15min_data.csv,True,4537,2026-03-26 04:00:00,2026-06-05 20:45:00,2020-01-01 00:00:00,2026-03-26 04:00:00,external_required,Yahoo 15m history is limited to about 60 days.
+15m,NQ_15min_data.csv,True,4537,2026-03-26 04:00:00,2026-06-05 20:45:00,2026-06-05 20:45:00,2026-06-07 00:00:00,yahoo_eligible,Range is inside Yahoo's usual intraday availability window.
+60m,NQ_60min_data.csv,True,13680,2024-01-12 05:00:00,2026-06-05 20:00:00,2020-01-01 00:00:00,2024-01-12 05:00:00,external_required,Yahoo 60m history is limited to about 730 days.
+60m,NQ_60min_data.csv,True,13680,2024-01-12 05:00:00,2026-06-05 20:00:00,2026-06-05 20:00:00,2026-06-07 00:00:00,yahoo_eligible,Range is inside Yahoo's usual intraday availability window.

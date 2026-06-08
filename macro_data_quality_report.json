@@ -1,7 +1,7 @@
 {
   "duplicate_timestamps": 0,
   "end": "2026-06-05 20:55:00",
-  "events_file": ".\\macro_releases.csv",
+  "events_file": "macro_releases.csv",
   "interval_seconds": {
     "median": 300.0,
     "mode": 300.0,
@@ -109,7 +109,7 @@
       "previous_date": "2026-05-05 20:55:00"
     }
   ],
-  "market_data": ".\\NQ_5min_data.csv",
+  "market_data": "NQ_5min_data.csv",
   "null_counts": {
     "adj_close": 0,
     "close": 0,

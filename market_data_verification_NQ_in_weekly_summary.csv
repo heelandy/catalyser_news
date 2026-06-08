@@ -1,0 +1,14 @@
+section,metric,value
+verdict,label,do_not_use_yet
+verdict,approved_for_model_use,False
+quality,rows,1372
+quality,start,1999-06-27 22:00:00
+quality,end,2025-10-05 22:00:00
+quality,duplicate_timestamps,0
+quality,interval_mode_seconds,604800.0
+intraday_reference,status,not_run
+intraday_reference,overlap_rows,
+intraday_reference,max_abs_ohlc_diff,
+daily_reference,status,mismatch
+daily_reference,overlap_rows,439
+daily_reference,max_abs_ohlc_diff,1900.5
