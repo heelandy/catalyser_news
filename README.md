@@ -92,13 +92,13 @@ through `futures_data_adapter.py`.
 Verify a newly added external 1-minute dataset before use:
 
 ```powershell
-python .\market_data_verify.py --input .\Dataset_NQ_1min_2022_2025.csv --datetime-column "timestamp ET" --input-timezone America/New_York --reference-intraday .\NQ_60min_data.csv --reference-daily .\NQ_F_daily.csv --report-output .\market_data_verification_report.json --summary-output .\market_data_verification_summary.csv --canonical-output .\NQ_external_1min_2022_2025_candidate.csv
+python .\market_data_verify.py --input .\extra\local_market_data\raw_exports\Dataset_NQ_1min_2022_2025.csv --datetime-column "timestamp ET" --input-timezone America/New_York --reference-intraday .\NQ_60min_data.csv --reference-daily .\NQ_F_daily.csv --report-output .\market_data_verification_report.json --summary-output .\market_data_verification_summary.csv --canonical-output .\extra\local_market_data\candidates_and_archived_adapter_outputs\NQ_external_1min_2022_2025_candidate.csv
 ```
 
 Verify a TradingView-style export such as `NQ_in_1_hour.csv`:
 
 ```powershell
-python .\market_data_verify.py --input .\NQ_in_1_hour.csv --datetime-column datetime --input-timezone UTC --expected-interval-seconds 3600 --reference-intraday .\NQ_60min_data.csv --reference-daily .\NQ_F_daily.csv --report-output .\market_data_verification_NQ_in_1_hour_report.json --summary-output .\market_data_verification_NQ_in_1_hour_summary.csv
+python .\market_data_verify.py --input .\extra\local_market_data\raw_exports\NQ_in_1_hour.csv --datetime-column datetime --input-timezone UTC --expected-interval-seconds 3600 --reference-intraday .\NQ_60min_data.csv --reference-daily .\NQ_F_daily.csv --report-output .\market_data_verification_NQ_in_1_hour_report.json --summary-output .\market_data_verification_NQ_in_1_hour_summary.csv
 ```
 
 Do not merge the candidate file into the active model until
@@ -129,8 +129,8 @@ Normalize Dabento NQ OHLCV exports when those files exist locally:
 
 ```powershell
 python .\dabento_nq_adapter.py --input .\dabento\glbx-mdp3-20100606-20260607.ohlcv-1m.csv --source-interval 1m --out-1m .\NQ_dabento_full_1min_data.csv --out-5m .\NQ_dabento_full_5min_data.csv --out-60m .\NQ_dabento_full_60min_data.csv --roll-map-output .\NQ_dabento_full_roll_map.csv --report-output .\dabento_nq_full_adapter_report.json
-python .\dabento_nq_adapter.py --input .\dabento\glbx-mdp3-20200101-20251231.ohlcv-1m.csv --source-interval 1m
-python .\dabento_nq_adapter.py --input .\dabento\1hour_glbx-mdp3-20100606-20260607.ohlcv-1h.csv --source-interval 1h --out-60m .\NQ_dabento_60min_long_data.csv --roll-map-output .\NQ_dabento_60min_long_roll_map.csv --report-output .\dabento_nq_60min_long_adapter_report.json
+python .\dabento_nq_adapter.py --input .\dabento\glbx-mdp3-20200101-20251231.ohlcv-1m.csv --source-interval 1m --out-1m .\extra\local_market_data\candidates_and_archived_adapter_outputs\NQ_dabento_1min_data.csv --out-5m .\extra\local_market_data\candidates_and_archived_adapter_outputs\NQ_dabento_5min_data.csv --out-60m .\extra\local_market_data\candidates_and_archived_adapter_outputs\NQ_dabento_60min_data.csv
+python .\dabento_nq_adapter.py --input .\dabento\1hour_glbx-mdp3-20100606-20260607.ohlcv-1h.csv --source-interval 1h --out-60m .\extra\local_market_data\candidates_and_archived_adapter_outputs\NQ_dabento_60min_long_data.csv --roll-map-output .\NQ_dabento_60min_long_roll_map.csv --report-output .\dabento_nq_60min_long_adapter_report.json
 ```
 
 The full-range 1-minute Dabento file creates canonical 1m, derived 5m, and
@@ -521,6 +521,9 @@ part of the current catalyst engine workflow. Examples include:
 - old test outputs
 - duplicate parquet files
 - local upload zip/cache material
+- `extra/local_market_data/raw_exports/` for unapproved raw/export inputs
+- `extra/local_market_data/candidates_and_archived_adapter_outputs/` for
+  normalized candidates and superseded adapter data
 
 Those files are kept for reference, not deleted.
 
@@ -582,6 +585,8 @@ Large vendor/export datasets such as `Dataset_*.csv`, `NQ_in_*.csv`,
 candidate normalized files such as `NQ_external_*candidate.csv` are ignored by
 Git. Small reports, roll maps, and reaction/profile artifacts are allowed so
 the research state can be reproduced without publishing the vendor bars.
+Most unapproved local exports now live under `extra/local_market_data/` to keep
+the root focused on the runnable pipeline.
 
 ## Current Pipeline Status
 
@@ -602,14 +607,16 @@ As of the latest local run:
 - `market_data_backfill.py` confirms that the useful 2020-to-current intraday
   gaps are `external_required`: Yahoo cannot backfill 1m/5m/15m/60m data that
   old.
-- `Dataset_NQ_1min_2022_2025.csv` was verified but is not approved for model
+- `extra/local_market_data/raw_exports/Dataset_NQ_1min_2022_2025.csv` was
+  verified but is not approved for model
   use yet. The file has 1,048,575 rows from 2022-12-26 23:01 UTC to
   2025-12-12 01:52 UTC, clean OHLC structure, no duplicate timestamps, and
   60-second interval mode. It failed Yahoo 60m and daily reference comparisons,
   and the row count is at Excel's worksheet limit, so it may be truncated or
   differently adjusted.
-- `NQ_in_*` TradingView-style exports were verified separately and are not
-  approved for active model use yet. The files have clean OHLC structure, valid
+- `extra/local_market_data/raw_exports/NQ_in_*` TradingView-style exports were
+  verified separately and are not approved for active model use yet. The files
+  have clean OHLC structure, valid
   0.25-point ticks, and no duplicate timestamps, but every file failed the
   strict Yahoo reference gate. The best-aligned intraday candidates were
   `NQ_in_1_hour.csv` with 7,300 of 9,981 overlapping hourly bars within 0.25
