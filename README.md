@@ -811,6 +811,30 @@ As of the latest local run:
   trust-weight charts, and min/max range summaries for signal, performance, and
   trust components.
 
+## Next Project Tasks
+
+These are deferred operational hardening items. They are not required for the
+current manual/background workflow, but they should be added before relying on
+the system unattended.
+
+1. Add `start_live_pipeline.ps1`, `stop_live_pipeline.ps1`, and
+   `status_live_pipeline.ps1` so the live runner can be managed without typing
+   long `Start-Process` and process-inspection commands.
+2. Add a Windows Task Scheduler setup script so the dashboard server and live
+   pipeline restart after reboot or login.
+3. Add duplicate-runner protection in `macro_pipeline_runner.py`, such as a PID
+   or lock file, so two live runners cannot overwrite the same output files.
+4. Add a dashboard stale-data warning when `macro_pipeline_status.json` is older
+   than the expected loop interval.
+5. Add log rotation for `macro_pipeline_runner.log` so long-running use does not
+   grow the log indefinitely.
+6. Add focused tests for UTC/ET handling, `--watch-releases`, and actual-value
+   detection, because release timing is the highest-risk behavior.
+7. Decide which refreshed runtime CSVs should be committed and which should stay
+   local-only, since live runs update dashboard signal files frequently.
+8. Configure and document real notification targets, such as webhook, email, or
+   a local risk-lock file, instead of relying only on console output.
+
 ## GitHub Upload Checklist
 
 The repo target for this workspace is:
