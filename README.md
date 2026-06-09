@@ -20,6 +20,7 @@ each responsibility separate:
 - `macro_pipeline_alerts.py` detects release-state and runner-health changes.
 - `macro_alert_notify.py` sends optional notifications for newly detected alerts.
 - `macro_daily_confirmation.py` adds the temporary daily baseline confirmation.
+- `macro_regime.py` separates release-rule direction from live-market regime.
 - `dashboard/` displays the current signals, performance, and trust weights.
 
 Older validation tools, broker exports, sample files, duplicate parquet outputs,
@@ -136,6 +137,23 @@ Operational notes:
   cycles so upcoming releases are picked up without manual action.
 - Raw `release_time` values in the CSV are UTC timestamps without a timezone
   suffix. The dashboard displays them in ET and shows UTC in the hover title.
+
+Live-regime override:
+
+- The release rule and the live market regime are intentionally separate. A
+  catalyst can be `Release-rule positive` because the actual value beat the
+  forecast, while the trade state still blocks longs if the broader tape is
+  bearish.
+- Create a local `macro_regime_context.json` when fresh news or price action is
+  overriding the normal release rule. This file is ignored by Git so it can be
+  changed during the session without polluting commits. Use
+  `macro_regime_context.example.json` as the template.
+- The runner passes this file through `--regime-context` to the trust and daily
+  confirmation stages. The dashboard then shows `Release Rule`, `Live Regime`,
+  `Trade State`, and conflict warnings instead of calling a bearish tape
+  `market_positive` just because the release value was positive.
+- Set `valid_until` in the context JSON. After it expires, the pipeline falls
+  back to the inferred regime from the current release set.
 
 Stop the background processes when needed:
 
@@ -659,6 +677,8 @@ Those files are kept for reference, not deleted.
 | `macro_reaction_study.py` | Historical event-to-price reaction study and live-release calibration. |
 | `macro_daily_source_compare.py` | Daily source-to-source reaction comparison report. |
 | `macro_daily_confirmation.py` | Temporary daily baseline confirmation layer for current live signals. |
+| `macro_regime.py` | Release-rule versus live-regime conflict layer and trade-state labeling. |
+| `macro_regime_context.example.json` | Template for a local manual/news regime override. |
 | `macro_signal_performance.py` | Post-release prediction grading and performance summaries. |
 | `macro_signal_trust.py` | Performance feedback layer for trust-adjusted live probabilities. |
 | `macro_data_quality.py` | Market-data health, gap, OHLC, and release-coverage report. |

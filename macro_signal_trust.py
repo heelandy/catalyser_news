@@ -20,6 +20,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from macro_regime import apply_regime_to_frame, load_regime_context
+
 
 LIVE_MATCH_ORDER = [
     ("event_family_market_bias", ["event_family", "market_bias_side"]),
@@ -369,6 +371,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--bearish-threshold", type=float, default=0.43)
     p.add_argument("--min-probability", type=float, default=0.05)
     p.add_argument("--max-probability", type=float, default=0.95)
+    p.add_argument("--regime-context", default="macro_regime_context.json", help="Optional manual/news regime context JSON")
     return p.parse_args()
 
 
@@ -389,6 +392,8 @@ def main() -> None:
         args.min_probability,
         args.max_probability,
     )
+    regime_context = load_regime_context(args.regime_context, adjusted.to_dict("records"))
+    adjusted = apply_regime_to_frame(adjusted, regime_context, args.bullish_threshold, args.bearish_threshold)
     adjusted.to_csv(args.adjusted_output, index=False)
     print(f"Wrote {len(adjusted)} trust-adjusted live signals to {args.adjusted_output}.")
 
@@ -397,11 +402,14 @@ def main() -> None:
             "title",
             "event_family",
             "market_bias_side",
+            "release_rule_label",
+            "live_market_regime",
             "calibrated_bullish_probability",
             "trust_weight",
             "trust_adjusted_bullish_probability",
             "trust_adjusted_direction",
             "trust_adjusted_confidence_label",
+            "trade_state",
             "trust_warning",
         ]
         print("\nAdjusted signal preview:")

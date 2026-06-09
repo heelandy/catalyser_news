@@ -253,6 +253,12 @@ function normalizeSignals(rows) {
     const bull = numberValue(row.final_bullish_probability || row.trust_adjusted_bullish_probability || row.calibrated_bullish_probability, 0.5);
     const bear = numberValue(row.final_bearish_probability || row.trust_adjusted_bearish_probability || row.calibrated_bearish_probability, 1 - bull);
     const confidence = numberValue(row.final_confidence || row.trust_adjusted_confidence || row.confidence, 0);
+    const releaseRuleDirection = clean(row.release_rule_direction, "unknown").toLowerCase();
+    const releaseRuleLabel = clean(row.release_rule_label, titleCase(row.market_bias_side || "release rule"));
+    const regimeDirection = clean(row.live_market_regime_direction, "mixed").toLowerCase();
+    const tradeState = clean(row.trade_state, "watch_only").toLowerCase();
+    const regimeConflict = clean(row.market_regime_conflict, "none").toLowerCase();
+    const regimeWarning = regimeConflict !== "none" ? clean(row.trade_state_reason || row.live_market_regime_reason, "") : "";
     return {
       ...row,
       id: signalId(row, index),
@@ -261,13 +267,25 @@ function normalizeSignals(rows) {
       bull,
       bear,
       confidence,
+      releaseRuleDirection,
+      releaseRuleLabel,
+      regimeDirection,
+      tradeState,
+      regimeConflict,
       warningText: clean(row.final_warning || row.trust_warning || row.warning, ""),
+      regimeWarning,
       searchText: [
         row.title,
         row.event_family,
         row.catalyst_category,
         row.source,
         row.market_bias_side,
+        row.release_rule_label,
+        row.live_market_regime,
+        row.live_market_regime_reason,
+        row.trade_state,
+        row.trade_state_reason,
+        row.market_regime_conflict,
         row.final_warning,
         row.trust_warning,
         row.daily_confirmation_match,
@@ -291,6 +309,7 @@ function renderMetrics() {
   const released = state.signals.filter((row) => row.status === "released").length;
   const bearish = state.signals.filter((row) => row.direction === "bearish").length;
   const bullish = state.signals.filter((row) => row.direction === "bullish").length;
+  const conflicts = state.signals.filter((row) => row.regimeConflict !== "none").length;
   const avgConfidence = total
     ? state.signals.reduce((sum, row) => sum + row.confidence, 0) / total
     : 0;
@@ -302,6 +321,7 @@ function renderMetrics() {
     { label: "Signals", value: total, note: `${released} released, ${waiting} waiting` },
     { label: "Bullish", value: bullish, note: "final direction" },
     { label: "Bearish", value: bearish, note: "final direction" },
+    { label: "Conflicts", value: conflicts, note: "rule vs regime" },
     { label: "Avg Confidence", value: percent(avgConfidence, 0), note: "trust adjusted" },
     { label: "Next", value: next ? formatTime(next.release_time) : "--", note: next ? clean(next.title) : "No pending release" },
   ];
@@ -464,6 +484,54 @@ function statusBadge(status) {
   return `<span class="badge ${cls}">${escapeHtml(titleCase(status))}</span>`;
 }
 
+function displayRuleLabel(row) {
+  const source = clean(row.release_rule_side || row.market_bias_side || "", "").toLowerCase();
+  if (source.includes("positive")) {
+    return "Rule Positive";
+  }
+  if (source.includes("negative")) {
+    return "Rule Negative";
+  }
+  if (source.includes("neutral")) {
+    return "Rule Neutral";
+  }
+  if (source.includes("unknown")) {
+    return "Rule Unknown";
+  }
+  return clean(row.releaseRuleLabel, "Rule Unknown").replace(/^Release-rule\s+/i, "Rule ");
+}
+
+function ruleBadge(row) {
+  const cls = ["bullish", "bearish", "mixed"].includes(row.releaseRuleDirection) ? row.releaseRuleDirection : "unknown";
+  return `<span class="badge ${escapeHtml(cls)}" title="${escapeHtml(row.releaseRuleLabel)}">${escapeHtml(displayRuleLabel(row))}</span>`;
+}
+
+function displayTradeState(row) {
+  const stateLabel = clean(row.tradeState, "watch_only");
+  const labels = {
+    no_long_wait_for_reclaim: "No Long",
+    no_short_wait_for_breakdown: "No Short",
+    short_only_after_confirmation: "Short Confirm",
+    long_only_after_confirmation: "Long Confirm",
+    wait_for_bearish_confirmation: "Wait Bearish",
+    wait_for_bullish_confirmation: "Wait Bullish",
+    wait_for_actual: "Wait Actual",
+    watch_only: "Watch",
+  };
+  return labels[stateLabel] || titleCase(stateLabel);
+}
+
+function tradeStateBadge(row) {
+  const conflict = row.regimeConflict !== "none";
+  const cls = conflict ? "bearish" : row.tradeState.includes("wait") ? "waiting" : row.tradeState.includes("long") ? "bullish" : row.tradeState.includes("short") ? "bearish" : "mixed";
+  return `<span class="badge ${escapeHtml(cls)}" title="${escapeHtml(clean(row.trade_state_reason))}">${escapeHtml(displayTradeState(row))}</span>`;
+}
+
+function regimePill(row) {
+  const cls = ["bullish", "bearish", "mixed"].includes(row.regimeDirection) ? row.regimeDirection : "mixed";
+  return `<span class="pill ${escapeHtml(cls)}" title="${escapeHtml(clean(row.live_market_regime_reason))}">${escapeHtml(titleCase(row.live_market_regime || row.regimeDirection))}</span>`;
+}
+
 function probabilityCell(row) {
   const value = Math.max(0, Math.min(100, row.bull * 100));
   const barClass = row.direction === "bearish" ? "bar bear" : "bar";
@@ -547,17 +615,19 @@ function renderSignals() {
         <td>
           <div class="title-cell">
             <strong title="${escapeHtml(clean(row.title))}">${escapeHtml(clean(row.title))}</strong>
-            <span>${escapeHtml(titleCase(row.event_family))} / ${escapeHtml(titleCase(row.catalyst_category))}</span>
+            <span>${escapeHtml(titleCase(row.event_family))} / ${escapeHtml(titleCase(row.catalyst_category))} / ${escapeHtml(titleCase(row.live_market_regime || "neutral_mixed"))}</span>
           </div>
         </td>
         <td>${directionBadge(row.direction)}</td>
+        <td>${ruleBadge(row)}</td>
         <td>${probabilityCell(row)}</td>
         <td>${percent(row.confidence, 0)}</td>
         <td>${points(row.trust_weight, 2)}</td>
+        <td>${tradeStateBadge(row)}</td>
         <td>${statusBadge(row.status)}</td>
       </tr>
     `).join("")
-    : '<tr><td colspan="7"><div class="empty">No matching signals</div></td></tr>';
+    : '<tr><td colspan="9"><div class="empty">No matching signals</div></td></tr>';
 
   renderDetail();
 }
@@ -580,15 +650,19 @@ function renderDetail() {
 
   state.selectedId = row.id;
   const warning = row.warningText ? `<div class="note">${escapeHtml(row.warningText)}</div>` : "";
+  const regimeWarning = row.regimeWarning ? `<div class="note warning">${escapeHtml(row.regimeWarning)}</div>` : "";
   const ruleNote = clean(row.market_rule_note, "");
   const trustNote = clean(row.trust_note, "");
+  const regimeReason = clean(row.live_market_regime_reason, "");
+  const tradeReason = clean(row.trade_state_reason, "");
 
   els.detailPanel.innerHTML = `
     <div class="detail-head">
       <div class="pill-row">
         ${directionBadge(row.direction)}
         ${statusBadge(row.status)}
-        <span class="pill ${escapeHtml(row.market_bias_label || row.direction)}">${escapeHtml(titleCase(row.market_bias_side))}</span>
+        <span class="pill ${escapeHtml(row.releaseRuleDirection)}" title="${escapeHtml(row.releaseRuleLabel)}">${escapeHtml(displayRuleLabel(row))}</span>
+        ${regimePill(row)}
       </div>
       <h2>${escapeHtml(clean(row.title))}</h2>
       <div class="prob">
@@ -603,11 +677,17 @@ function renderDetail() {
       ${detailDatum("Forecast", row.forecast)}
       ${detailDatum("Previous", row.previous)}
       ${detailDatum("Surprise", points(row.surprise, 2))}
+      ${detailDatum("Release Rule", row.releaseRuleLabel)}
+      ${detailDatum("Live Regime", titleCase(row.live_market_regime))}
+      ${detailDatum("Trade State", titleCase(row.tradeState))}
       ${detailDatum("Trust Weight", points(row.trust_weight, 3))}
       ${detailDatum("Trust Samples", row.trust_sample_size)}
       ${detailDatum("Daily Confirm", titleCase(row.daily_confirmation_match))}
       ${detailDatum("Daily Bull", percent(numberValue(row.daily_confirmation_bullish_probability, 0.5), 0))}
     </div>
+    ${regimeWarning}
+    ${regimeReason ? `<div class="note">${escapeHtml(regimeReason)}</div>` : ""}
+    ${tradeReason ? `<div class="note">${escapeHtml(tradeReason)}</div>` : ""}
     ${ruleNote ? `<div class="note">${escapeHtml(ruleNote)}</div>` : ""}
     ${trustNote ? `<div class="note">${escapeHtml(trustNote)}</div>` : ""}
     ${row.daily_confirmation_note ? `<div class="note">${escapeHtml(row.daily_confirmation_note)}</div>` : ""}
@@ -773,7 +853,7 @@ async function loadAll() {
     renderAll();
   } catch (error) {
     els.dataStamp.textContent = `Data load failed: ${error.message}`;
-    els.signalsBody.innerHTML = '<tr><td colspan="7"><div class="empty">Unable to load dashboard data</div></td></tr>';
+    els.signalsBody.innerHTML = '<tr><td colspan="9"><div class="empty">Unable to load dashboard data</div></td></tr>';
     els.detailPanel.innerHTML = '<div class="empty">CSV files unavailable</div>';
   }
 }

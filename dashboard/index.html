@@ -68,15 +68,28 @@
         </section>
         <div class="content-grid">
           <div class="table-wrap">
-            <table>
+            <table class="signals-table">
+              <colgroup>
+                <col class="col-time">
+                <col class="col-catalyst">
+                <col class="col-direction">
+                <col class="col-rule">
+                <col class="col-bull">
+                <col class="col-confidence">
+                <col class="col-trust">
+                <col class="col-trade">
+                <col class="col-status">
+              </colgroup>
               <thead>
                 <tr>
                   <th data-sort="release_time">Time</th>
                   <th data-sort="title">Catalyst</th>
                   <th data-sort="final_expected_direction">Direction</th>
+                  <th data-sort="release_rule_label">Rule</th>
                   <th data-sort="final_bullish_probability">Bull</th>
                   <th data-sort="final_confidence">Confidence</th>
                   <th data-sort="trust_weight">Trust</th>
+                  <th data-sort="trade_state">Trade State</th>
                   <th data-sort="release_status">Status</th>
                 </tr>
               </thead>
@@ -148,6 +161,6 @@
       </section>
     </main>
 
-    <script src="./app.js?v=1.0.1"></script>
+    <script src="./app.js?v=1.0.2"></script>
   </body>
 </html>

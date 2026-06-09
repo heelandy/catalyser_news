@@ -1,0 +1,8 @@
+{
+  "regime": "bearish_growth_hawkish_chips",
+  "direction": "bearish",
+  "confidence": 0.70,
+  "reason": "Hot labor data lifted Fed/yield pressure while chip/AI weakness confirmed Nasdaq underperformance. Avoid long NQ unless price reclaims the session trend.",
+  "source": "manual_news_context",
+  "valid_until": "2026-06-10T00:00:00Z"
+}

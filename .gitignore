@@ -23,6 +23,7 @@ macro_pipeline_status.json
 macro_pipeline_alerts.csv
 macro_pipeline_alert_state.json
 macro_pipeline_alert_summary.json
+macro_regime_context.json
 macro_alert_notify_state.json
 macro_alert_notify_status.json
 macro_alert_risk_lock.json

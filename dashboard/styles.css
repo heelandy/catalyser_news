@@ -135,7 +135,7 @@ h1 {
 
 .metrics {
   display: grid;
-  grid-template-columns: repeat(5, minmax(150px, 1fr));
+  grid-template-columns: repeat(6, minmax(140px, 1fr));
   gap: 10px;
   margin-bottom: 14px;
 }
@@ -627,6 +627,43 @@ table {
   table-layout: fixed;
 }
 
+.signals-table {
+  min-width: 1120px;
+}
+
+.signals-table .col-time {
+  width: 110px;
+}
+
+.signals-table .col-catalyst {
+  width: 180px;
+}
+
+.signals-table .col-direction,
+.signals-table .col-rule {
+  width: 112px;
+}
+
+.signals-table .col-bull {
+  width: 128px;
+}
+
+.signals-table .col-confidence {
+  width: 112px;
+}
+
+.signals-table .col-trust {
+  width: 82px;
+}
+
+.signals-table .col-trade {
+  width: 136px;
+}
+
+.signals-table .col-status {
+  width: 118px;
+}
+
 th,
 td {
   height: 54px;
@@ -710,10 +747,13 @@ tbody tr:last-child td {
   max-width: 100%;
   height: 26px;
   padding: 0 9px;
+  overflow: hidden;
   border-radius: 999px;
   font-size: 12px;
   font-weight: 760;
+  text-overflow: ellipsis;
   text-transform: capitalize;
+  white-space: nowrap;
 }
 
 .badge.bullish,
@@ -740,6 +780,12 @@ tbody tr:last-child td {
 .pill.waiting {
   color: var(--info);
   background: var(--info-soft);
+}
+
+.badge.unknown,
+.pill.unknown {
+  color: var(--muted);
+  background: var(--surface-2);
 }
 
 .prob {
@@ -829,6 +875,13 @@ tbody tr:last-child td {
   background: #fbfcfb;
   font-size: 13px;
   line-height: 1.45;
+}
+
+.note.warning {
+  border-color: #f0b8ae;
+  color: var(--bear);
+  background: var(--bear-soft);
+  font-weight: 680;
 }
 
 .pill-row {

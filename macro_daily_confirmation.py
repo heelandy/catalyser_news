@@ -20,6 +20,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from macro_regime import apply_regime_to_frame, load_regime_context
+
 
 MATCH_ORDER = [
     ("event_family_market_bias", ["event_family", "market_bias_side"]),
@@ -42,6 +44,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--max-blend-weight", type=float, default=0.18)
     p.add_argument("--min-sample-size", type=int, default=3)
     p.add_argument("--sample-prior", type=float, default=12.0)
+    p.add_argument("--regime-context", default="macro_regime_context.json", help="Optional manual/news regime context JSON")
     return p.parse_args()
 
 
@@ -275,6 +278,8 @@ def build_report(out: pd.DataFrame, args: argparse.Namespace) -> dict[str, Any]:
         "avg_abs_probability_adjustment": float(changed.mean()) if len(changed) else 0.0,
         "max_abs_probability_adjustment": float(changed.max()) if len(changed) else 0.0,
         "changed_direction_rows": int((out["final_expected_direction"].astype(str) != out["base_final_expected_direction"].astype(str)).sum()),
+        "regime_conflict_counts": {str(key): int(value) for key, value in out.get("market_regime_conflict", pd.Series(dtype=str)).value_counts(dropna=False).to_dict().items()},
+        "trade_state_counts": {str(key): int(value) for key, value in out.get("trade_state", pd.Series(dtype=str)).value_counts(dropna=False).to_dict().items()},
         "note": "Daily confirmation is a separate baseline layer. It does not replace 1m/5m release-reaction modeling.",
     }
 
@@ -292,6 +297,8 @@ def main() -> None:
         rows.append(out)
 
     output = pd.DataFrame(rows)
+    regime_context = load_regime_context(args.regime_context, output.to_dict("records"))
+    output = apply_regime_to_frame(output, regime_context, args.bullish_threshold, args.bearish_threshold)
     output.to_csv(args.output, index=False)
     report = build_report(output, args)
     Path(args.summary_output).write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")

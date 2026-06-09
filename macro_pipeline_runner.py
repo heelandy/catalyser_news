@@ -301,6 +301,8 @@ def build_stages(args: argparse.Namespace) -> list[Stage]:
                     args.trust_weights_output,
                     "--adjusted-output",
                     args.adjusted_signal_output,
+                    "--regime-context",
+                    args.regime_context,
                 ],
                 required_inputs=[args.live_signal_output, args.performance_output],
                 expected_outputs=[args.trust_weights_output, args.adjusted_signal_output],
@@ -323,6 +325,8 @@ def build_stages(args: argparse.Namespace) -> list[Stage]:
                     args.daily_confirmation_report_output,
                     "--source-label",
                     args.daily_confirmation_source_label,
+                    "--regime-context",
+                    args.regime_context,
                 ],
                 required_inputs=[args.adjusted_signal_output, args.daily_confirmation_profiles],
                 expected_outputs=[args.current_signal_output, args.daily_confirmation_report_output],
@@ -462,6 +466,7 @@ def run_cycle(args: argparse.Namespace, root: Path, cycle: int) -> bool:
         "alert_notify_status_output": args.alert_notify_status_output,
         "market_config": args.market_config_summary,
         "active_market_data_file": args.active_market_data_file,
+        "regime_context": args.regime_context,
     }
 
     log(f"Pipeline cycle {cycle} starting with {len(stages)} stage(s)", log_file)
@@ -561,6 +566,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--neutral-threshold-pts", type=float, default=0.0)
     p.add_argument("--grades-output", default="macro_signal_grades.csv")
     p.add_argument("--performance-output", default="macro_signal_performance.csv")
+    p.add_argument("--regime-context", default="macro_regime_context.json", help="Optional manual/news regime context JSON")
     p.add_argument("--data-quality-report-output", default="macro_data_quality_report.json")
     p.add_argument("--data-quality-summary-output", default="macro_data_quality_summary.csv")
     p.add_argument("--timing-audit-rows-output", default="macro_timing_audit.csv")
