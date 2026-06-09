@@ -28,6 +28,10 @@ macro_alert_notify_status.json
 macro_alert_risk_lock.json
 futures_data_adapter_summary.json
 *_external_*data.csv
+calendar_news_summary.csv
+catalysts_news_summary.csv
+tradingview_calendar_news_summary.csv
+tradingeconomics_news_summary.csv
 
 # One-off local verification outputs.
 catalysts_market_bias_test.csv

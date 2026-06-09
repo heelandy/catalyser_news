@@ -1,16 +1,15 @@
 {
-  "avg_abs_probability_adjustment": 0.0016216299797550602,
+  "avg_abs_probability_adjustment": 0.0013181711635818494,
   "changed_direction_rows": 0,
   "daily_profiles": "macro_reaction_profiles_investing_daily.csv",
   "match_counts": {
-    "daily_leans": 11,
-    "neutral": 2,
-    "with_signal": 1
+    "daily_leans": 9,
+    "neutral": 1
   },
-  "max_abs_probability_adjustment": 0.0037115220090497836,
+  "max_abs_probability_adjustment": 0.002765803921568666,
   "note": "Daily confirmation is a separate baseline layer. It does not replace 1m/5m release-reaction modeling.",
   "output": "macro_live_signal_current.csv",
-  "rows": 14,
+  "rows": 10,
   "signals": "macro_live_signal_adjusted.csv",
   "source_label": "investing_daily_clean"
 }

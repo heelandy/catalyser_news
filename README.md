@@ -41,6 +41,119 @@ python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
+## Quick Start: Repository To Live Pipeline
+
+Use this sequence when starting from GitHub and ending with the dashboard plus
+the live macro pipeline running in the background.
+
+Clone the repository the first time:
+
+```powershell
+cd "<parent folder where you keep trading projects>"
+git clone https://github.com/heelandy/catalyser_news.git "python nq Catalyst"
+cd ".\python nq Catalyst"
+```
+
+If the repository already exists locally, update it instead:
+
+```powershell
+cd "<path to python nq Catalyst>"
+git pull --ff-only
+```
+
+Create or refresh the Python environment:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+Restore any private/local market-data files that are intentionally not committed
+to Git. Large vendor files and raw exports are ignored by `.gitignore`, so a
+fresh clone will not include files such as `dabento/`, `NQ_dabento_full_*data.csv`,
+`Dataset_*.csv`, or `NQ_in_*.csv`. The normal live calendar pipeline can run
+from the committed profile and signal files, but quality/performance refreshes
+that reference full market data need those ignored files restored or
+`market_data_config.json` updated.
+
+Run a dry check before starting the live loop:
+
+```powershell
+python .\macro_pipeline_runner.py --dry-run
+```
+
+Start the dashboard HTTP server from the repository root. Keep this shell open,
+or start it in the background as shown below.
+
+```powershell
+python -m http.server 8787 --bind 127.0.0.1
+```
+
+Open:
+
+```text
+http://127.0.0.1:8787/dashboard/
+```
+
+Optional background dashboard server:
+
+```powershell
+$server = Start-Process -FilePath "python" -ArgumentList @("-m", "http.server", "8787", "--bind", "127.0.0.1") -WorkingDirectory (Get-Location) -WindowStyle Hidden -PassThru
+$server.Id
+```
+
+Start the live pipeline in the background. This is the command that pulls live
+calendar rows, watches for actual values, recalibrates signals, updates the
+dashboard CSVs, and runs the alert detector every cycle.
+
+```powershell
+$runner = Start-Process -FilePath "python" -ArgumentList @(".\macro_pipeline_runner.py", "--run-forever", "--watch-releases", "--loop-seconds", "60") -WorkingDirectory (Get-Location) -WindowStyle Hidden -PassThru
+$runner.Id
+```
+
+Verify that it is running:
+
+```powershell
+Get-CimInstance Win32_Process |
+  Where-Object { $_.Name -like "python*" -and $_.CommandLine -match "macro_pipeline_runner.py" } |
+  Select-Object ProcessId, CommandLine
+
+Get-Content .\macro_pipeline_status.json
+Get-Content .\macro_pipeline_runner.log -Tail 80
+Get-Content .\macro_pipeline_alert_summary.json
+```
+
+Operational notes:
+
+- Do not use `--dry-run` for live operation; it prints commands but does not
+  fetch or update files.
+- The dashboard only serves and displays local files. It does not fetch new
+  release data by itself.
+- `--watch-releases` polls the calendar every 15 seconds while the command is
+  within its watch window. `--run-forever --loop-seconds 60` keeps restarting
+  cycles so upcoming releases are picked up without manual action.
+- Raw `release_time` values in the CSV are UTC timestamps without a timezone
+  suffix. The dashboard displays them in ET and shows UTC in the hover title.
+
+Stop the background processes when needed:
+
+```powershell
+Stop-Process -Id <runner-pid>
+Stop-Process -Id <server-pid>
+```
+
+To update later, stop the runner, pull the latest repository changes, refresh
+dependencies if needed, then restart the background runner:
+
+```powershell
+git pull --ff-only
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+$runner = Start-Process -FilePath "python" -ArgumentList @(".\macro_pipeline_runner.py", "--run-forever", "--watch-releases", "--loop-seconds", "60") -WorkingDirectory (Get-Location) -WindowStyle Hidden -PassThru
+```
+
 ## 1. Fetch Market Data
 
 Download the current intraday NQ inputs used by the reaction study:
@@ -480,10 +593,10 @@ release polling, the update can take up to the next loop cycle.
 
 ## 7. Start The Dashboard Locally
 
-Serve the workspace root and open the dashboard:
+Serve the repository root and open the dashboard:
 
 ```powershell
-cd "C:\Users\heela\OneDrive\Área de Trabalho\python nq"
+cd "<path to python nq Catalyst>"
 python -m http.server 8787 --bind 127.0.0.1
 ```
 
@@ -492,6 +605,9 @@ Then open:
 ```text
 http://127.0.0.1:8787/dashboard/
 ```
+
+For the full startup sequence from `git pull` through a background live runner,
+use [Quick Start: Repository To Live Pipeline](#quick-start-repository-to-live-pipeline).
 
 The dashboard reads:
 

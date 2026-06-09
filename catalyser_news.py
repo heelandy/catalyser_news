@@ -1333,7 +1333,7 @@ def main():
         summary = estimate_impacts(prov_rows, symbols_hint=symbols_hint, decay_days=args.decay_days)
         out_path = args.output
         if multiple:
-            out_path = f"{prov}_{args.output}"
+            out_path = prefixed_output_path(f"{prov}_", args.output)
         write_summary_csv(out_path, summary)
         all_summaries[prov] = summary
         print(f'Processed {len(prov_rows)} items from {prov}. Wrote summary to {out_path}.')
