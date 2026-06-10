@@ -295,6 +295,8 @@ def build_stages(args: argparse.Namespace) -> list[Stage]:
                 + [
                     "--provider",
                     args.news_feed_provider,
+                    "--tradingview-news-url",
+                    args.news_feed_tradingview_url,
                     "--symbols",
                     args.news_feed_symbols,
                     "--max-per-symbol",
@@ -457,6 +459,8 @@ def run_alert_notifier(args: argparse.Namespace, root: Path, log_file: Path | No
         args.alert_summary_output,
         "--alerts-csv",
         args.alerts_output,
+        "--signals",
+        args.alert_signal_output,
         "--state",
         args.alert_notify_state_output,
         "--status-output",
@@ -528,11 +532,16 @@ def run_cycle(args: argparse.Namespace, root: Path, cycle: int) -> bool:
         "alert_summary_output": args.alert_summary_output,
         "notify_alerts": args.notify_alerts,
         "alert_notify_status_output": args.alert_notify_status_output,
+        "run_forever": args.run_forever,
+        "loop_seconds": args.loop_seconds,
+        "watch_releases": args.watch_releases,
         "market_config": args.market_config_summary,
         "active_market_data_file": args.active_market_data_file,
         "regime_context": args.regime_context,
         "generated_regime_context": args.generated_regime_context,
         "news_feed_output": args.news_feed_output,
+        "news_feed_summary_output": args.news_feed_summary_output,
+        "news_feed_provider": args.news_feed_provider,
     }
 
     log(f"Pipeline cycle {cycle} starting with {len(stages)} stage(s)", log_file)
@@ -638,7 +647,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--skip-live-regime-context", action="store_true", help="Do not rebuild the generated tape/news regime context")
     p.add_argument("--news-regime-context", default="macro_news_context.json", help="Optional rule-based news regime context JSON")
     p.add_argument("--skip-news-feed", action="store_true", help="Do not fetch/interpret market news before regime generation")
-    p.add_argument("--news-feed-provider", choices=["yahoo", "tradingview", "auto"], default="yahoo")
+    p.add_argument("--news-feed-provider", choices=["yahoo", "yahoo_rss", "tradingview", "auto"], default="auto")
+    p.add_argument(
+        "--news-feed-tradingview-url",
+        default="https://www.tradingview.com/news-flow/?market=stock,etf,futures",
+    )
     p.add_argument("--news-feed-symbols", default="NQ=F,QQQ,SPY,^NDX,^IXIC,NVDA,AMD,SMH")
     p.add_argument("--news-feed-max-per-symbol", type=int, default=8)
     p.add_argument("--news-feed-max-items", type=int, default=40)

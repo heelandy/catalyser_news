@@ -148,6 +148,12 @@ def signal_snapshot(row: dict[str, Any]) -> dict[str, Any]:
         "confidence": confidence,
         "confidence_label": first_clean(row, "final_confidence_label", "trust_adjusted_confidence_label", "confidence_label"),
         "warning": first_clean(row, "final_warning", "trust_warning", "warning"),
+        "live_market_regime": first_clean(row, "live_market_regime"),
+        "live_market_regime_direction": first_clean(row, "live_market_regime_direction", fallback="mixed").lower(),
+        "live_market_regime_reason": first_clean(row, "live_market_regime_reason"),
+        "market_regime_conflict": first_clean(row, "market_regime_conflict", fallback="none").lower(),
+        "trade_state": first_clean(row, "trade_state", fallback="watch_only").lower(),
+        "trade_state_reason": first_clean(row, "trade_state_reason"),
     }
 
 
@@ -196,6 +202,28 @@ def actual_released_message(current: dict[str, Any]) -> str:
     )
 
 
+def conflict_active(snapshot: dict[str, Any]) -> bool:
+    conflict = clean(snapshot.get("market_regime_conflict")).lower()
+    trade_state = clean(snapshot.get("trade_state")).lower()
+    warning = clean(snapshot.get("warning")).lower()
+    return (
+        conflict not in {"", "none", "--"}
+        or trade_state.startswith("no_long")
+        or "avoid long" in warning
+        or "no long" in warning
+    )
+
+
+def conflict_message(current: dict[str, Any]) -> str:
+    reason = clean(current.get("trade_state_reason") or current.get("live_market_regime_reason") or current.get("warning"))
+    return (
+        f"{current['title']} has release/live-regime conflict. "
+        f"Trade state {current.get('trade_state') or '--'}, "
+        f"live regime {current.get('live_market_regime_direction') or '--'}. "
+        f"{reason}"
+    ).strip()
+
+
 def signal_alerts(
     current_signals: dict[str, dict[str, Any]],
     previous_signals: dict[str, dict[str, Any]],
@@ -218,6 +246,8 @@ def signal_alerts(
                         current,
                     )
                 )
+                if conflict_active(current):
+                    alerts.append(alert_row("risk_lock_triggered", "high", conflict_message(current), current))
             continue
 
         if not released(previous) and released(current):
@@ -244,6 +274,28 @@ def signal_alerts(
                     previous,
                 )
             )
+
+        if previous.get("live_market_regime_direction") != current.get("live_market_regime_direction"):
+            severity = "high" if current.get("live_market_regime_direction") == "bearish" else "medium"
+            alerts.append(
+                alert_row(
+                    "live_regime_changed",
+                    severity,
+                    (
+                        f"{current['title']} live regime changed from "
+                        f"{previous.get('live_market_regime_direction') or '--'} to "
+                        f"{current.get('live_market_regime_direction') or '--'}. "
+                        f"{current.get('live_market_regime_reason') or ''}"
+                    ).strip(),
+                    current,
+                    previous,
+                )
+            )
+
+        if not conflict_active(previous) and conflict_active(current):
+            alerts.append(alert_row("risk_lock_triggered", "high", conflict_message(current), current, previous))
+        elif previous.get("trade_state") != current.get("trade_state") and conflict_active(current):
+            alerts.append(alert_row("trade_state_changed", "medium", conflict_message(current), current, previous))
 
         previous_bull = previous.get("bullish_probability")
         current_bull = current.get("bullish_probability")

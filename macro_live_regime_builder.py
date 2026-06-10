@@ -52,6 +52,10 @@ def text_value(value: Any) -> str:
     return str(value if value is not None else "").strip()
 
 
+def split_field(value: Any) -> list[str]:
+    return [part.strip() for part in text_value(value).replace(",", ";").split(";") if part.strip()]
+
+
 def as_float(value: Any, default: float = 0.0) -> float:
     try:
         out = float(value)
@@ -260,11 +264,15 @@ def news_context_components(args: argparse.Namespace, now: datetime) -> list[dic
         direction = signal_direction(item)
         if direction == "mixed":
             continue
+        flags = split_field(item.get("risk_flags"))
+        confidence = as_float(item.get("confidence"), 0.55)
+        if direction == "bearish" and any(flag in flags for flag in ("macro_policy_pressure", "nq_growth_pressure", "risk_off")):
+            confidence = max(confidence, 0.68)
         out.append(
             contribution(
                 text_value(item.get("source") or "news_context"),
                 direction,
-                as_float(item.get("confidence"), 0.55),
+                confidence,
                 args.news_weight,
                 text_value(item.get("reason") or item.get("message") or item.get("headline") or "news context"),
             )
@@ -281,10 +289,17 @@ def news_context_components(args: argparse.Namespace, now: datetime) -> list[dic
                 age_minutes = (now - published).total_seconds() / 60.0
                 if age_minutes > args.max_news_feed_minutes:
                     continue
+            flags = split_field(row.get("risk_flags"))
+            themes = split_field(row.get("themes") or row.get("categories"))
             confidence = as_float(row.get("confidence"), 0.25)
+            if direction == "bearish" and any(flag in flags for flag in ("macro_policy_pressure", "nq_growth_pressure", "risk_off")):
+                confidence = max(confidence, 0.68)
+            if direction == "bearish" and {"rates", "chips_ai"} <= set(themes):
+                confidence = max(confidence, 0.62)
             title = text_value(row.get("title") or "news item")
             reason = text_value(row.get("reason") or title)
-            out.append(contribution("news_feed", direction, confidence, args.news_weight, f"{title}: {reason}"))
+            flag_note = f" flags={','.join(flags[:4])}" if flags else ""
+            out.append(contribution("news_feed", direction, confidence, args.news_weight, f"{title}: {reason}{flag_note}"))
 
     summary_path = Path(args.news_summary)
     if summary_path.exists():

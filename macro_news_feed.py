@@ -3,7 +3,9 @@
 Fetch and interpret fast market news for the NQ macro catalyst dashboard.
 
 Default source is Yahoo Finance because it is faster and simpler than scraping
-TradingView news pages. TradingView is available as an optional fallback.
+TradingView news pages. Auto mode tries Yahoo's search endpoint first, then
+Yahoo RSS, then TradingView news-flow as a last fallback. TradingView may return
+only browser-side placeholders when requested from a background script.
 """
 from __future__ import annotations
 
@@ -14,11 +16,12 @@ import json
 import math
 import re
 import time
+import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import requests
 
@@ -29,7 +32,8 @@ except Exception:  # pragma: no cover - dependency is optional at runtime
 
 
 YAHOO_SEARCH_URL = "https://query2.finance.yahoo.com/v1/finance/search"
-TRADINGVIEW_NEWS_URL = "https://www.tradingview.com/news/"
+YAHOO_RSS_URL = "https://feeds.finance.yahoo.com/rss/2.0/headline"
+TRADINGVIEW_NEWS_FLOW_URL = "https://www.tradingview.com/news-flow/?market=stock,etf,futures"
 DEFAULT_SYMBOLS = "NQ=F,QQQ,SPY,^NDX,^IXIC,NVDA,AMD,SMH"
 
 CSV_FIELDS = [
@@ -41,20 +45,28 @@ CSV_FIELDS = [
     "title",
     "summary",
     "url",
+    "valid_until",
     "sentiment_score",
     "macro_score",
     "direction",
     "confidence",
     "categories",
+    "themes",
+    "risk_flags",
     "reason",
 ]
 
 BEARISH_TERMS = {
+    "payrolls jumped": 0.45,
+    "nonfarm payrolls jumped": 0.50,
     "hawkish": 0.45,
     "rate hike": 0.45,
     "rate hikes": 0.45,
+    "fed rate hike bets": 0.55,
+    "fed-rate hike bets": 0.55,
     "higher yields": 0.35,
     "yield spike": 0.35,
+    "higher inflation": 0.45,
     "hot inflation": 0.45,
     "sticky inflation": 0.40,
     "hot jobs": 0.40,
@@ -74,10 +86,19 @@ BEARISH_TERMS = {
     "slump": 0.30,
     "plunge": 0.35,
     "risk-off": 0.45,
+    "hammered": 0.35,
+    "steepest decline": 0.40,
+    "erased more than": 0.35,
+    "market value": 0.20,
     "semiconductor selloff": 0.45,
     "chip selloff": 0.45,
+    "chip stocks": 0.25,
     "ai unwind": 0.40,
+    "unwind positions": 0.35,
+    "ai boom": 0.20,
     "growth scare": 0.35,
+    "dow jones should perform better": 0.25,
+    "nasdaq underperform": 0.30,
 }
 
 BULLISH_TERMS = {
@@ -94,7 +115,6 @@ BULLISH_TERMS = {
     "relief": 0.25,
     "buying opportunity": 0.22,
     "surge": 0.25,
-    "jumped": 0.20,
     "upgrade": 0.25,
     "beat estimates": 0.25,
 }
@@ -105,7 +125,44 @@ CATEGORY_TERMS = {
     "labor": ("jobs", "payroll", "nfp", "unemployment", "jobless"),
     "chips_ai": ("chip", "semiconductor", "nvidia", "amd", "ai", "smh"),
     "index": ("nasdaq", "qqq", "nq", "technology", "growth stocks"),
+    "geopolitical": ("iran", "war", "geopolitical", "middle east"),
+    "risk": ("selloff", "slump", "plunge", "whipsaw", "risk-off", "volatility"),
 }
+
+NEWS_RULES = [
+    ("nonfarm payrolls jumped", -0.50, "labor", "hot_labor"),
+    ("payrolls jumped", -0.45, "labor", "hot_labor"),
+    ("way higher than", -0.22, "labor", "upside_surprise"),
+    ("fed rate hike bets", -0.55, "rates", "hawkish_fed"),
+    ("fed-rate hike bets", -0.55, "rates", "hawkish_fed"),
+    ("higher inflation", -0.45, "inflation", "inflation_pressure"),
+    ("hot jobs", -0.40, "labor", "hot_labor"),
+    ("hot nfp", -0.45, "labor", "hot_labor"),
+    ("hawkish", -0.42, "rates", "hawkish_fed"),
+    ("higher yields", -0.34, "rates", "yield_pressure"),
+    ("chip stocks", -0.28, "chips_ai", "chip_pressure"),
+    ("semiconductor sector", -0.25, "chips_ai", "chip_pressure"),
+    ("semiconductor selloff", -0.48, "chips_ai", "chip_selloff"),
+    ("chip selloff", -0.48, "chips_ai", "chip_selloff"),
+    ("steepest decline", -0.40, "risk", "selloff_pressure"),
+    ("hammered", -0.35, "risk", "selloff_pressure"),
+    ("erased more than", -0.35, "risk", "market_cap_loss"),
+    ("unwind positions", -0.35, "risk", "position_unwind"),
+    ("ai boom", -0.20, "chips_ai", "ai_unwind_risk"),
+    ("risk-off", -0.45, "risk", "risk_off"),
+    ("futures fall", -0.35, "index", "futures_weak"),
+    ("futures drop", -0.35, "index", "futures_weak"),
+    ("dow jones should perform better", -0.25, "index", "growth_underperformance"),
+    ("nasdaq underperform", -0.30, "index", "growth_underperformance"),
+    ("cooler inflation", 0.45, "inflation", "cooling_inflation"),
+    ("soft jobs", 0.35, "labor", "soft_labor"),
+    ("rate cut", 0.38, "rates", "dovish_fed"),
+    ("rate cuts", 0.38, "rates", "dovish_fed"),
+    ("dovish", 0.42, "rates", "dovish_fed"),
+    ("risk-on", 0.45, "risk", "risk_on"),
+    ("rebound", 0.25, "index", "rebound"),
+    ("rally", 0.30, "index", "rally"),
+]
 
 
 def utc_now() -> datetime:
@@ -160,6 +217,13 @@ def request_json(url: str, params: dict[str, Any], timeout: int) -> dict[str, An
     return response.json()
 
 
+def request_text(url: str, params: dict[str, Any], timeout: int) -> str:
+    headers = {"User-Agent": "Mozilla/5.0 (compatible; nq-macro-catalyst/1.0)"}
+    response = requests.get(url, params=params, timeout=timeout, headers=headers)
+    response.raise_for_status()
+    return response.text
+
+
 def fetch_yahoo_symbol(symbol: str, max_items: int, timeout: int) -> list[dict[str, Any]]:
     data = request_json(
         YAHOO_SEARCH_URL,
@@ -186,9 +250,61 @@ def fetch_yahoo_symbol(symbol: str, max_items: int, timeout: int) -> list[dict[s
     return rows
 
 
-def fetch_tradingview(max_items: int, timeout: int) -> list[dict[str, Any]]:
+def fetch_yahoo_rss_symbol(symbol: str, max_items: int, timeout: int) -> list[dict[str, Any]]:
+    xml_text = request_text(
+        YAHOO_RSS_URL,
+        {"s": symbol, "region": "US", "lang": "en-US"},
+        timeout,
+    )
+    root = ET.fromstring(xml_text)
+    rows = []
+    for item in root.findall(".//item"):
+        title = clean(item.findtext("title"))
+        if not title:
+            continue
+        source = clean(item.findtext("source") or item.findtext("{*}source") or "Yahoo Finance RSS")
+        rows.append(
+            {
+                "provider": "yahoo_rss",
+                "source": source,
+                "symbol": symbol,
+                "symbols": source_symbol(symbol),
+                "title": title,
+                "summary": clean(item.findtext("description") or ""),
+                "url": clean(item.findtext("link") or ""),
+                "published_at": parse_time(item.findtext("pubDate")) or utc_now(),
+            }
+        )
+        if len(rows) >= max_items:
+            break
+    return rows
+
+
+def normalize_tradingview_url(url: str) -> str:
+    parsed = urlsplit(url or TRADINGVIEW_NEWS_FLOW_URL)
+    query = []
+    for key, value in parse_qsl(parsed.query, keep_blank_values=True):
+        if key == "market":
+            markets = ["futures" if part.strip() == "future" else part.strip() for part in value.split(",")]
+            value = ",".join(part for part in markets if part)
+        query.append((key, value))
+    if parsed.path.rstrip("/") == "/news-flow" and not any(key == "market" for key, _ in query):
+        query.append(("market", "stock,etf,futures"))
+    return urlunsplit(
+        (
+            parsed.scheme or "https",
+            parsed.netloc or "www.tradingview.com",
+            parsed.path or "/news-flow/",
+            urlencode(query, safe=","),
+            "",
+        )
+    )
+
+
+def fetch_tradingview(max_items: int, timeout: int, url: str) -> list[dict[str, Any]]:
+    feed_url = normalize_tradingview_url(url)
     headers = {"User-Agent": "Mozilla/5.0 (compatible; nq-macro-catalyst/1.0)"}
-    response = requests.get(TRADINGVIEW_NEWS_URL, timeout=timeout, headers=headers)
+    response = requests.get(feed_url, timeout=timeout, headers=headers)
     response.raise_for_status()
     page = response.text
     rows = []
@@ -202,7 +318,7 @@ def fetch_tradingview(max_items: int, timeout: int) -> list[dict[str, Any]]:
         seen.add(title)
         rows.append(
             {
-                "provider": "tradingview",
+                "provider": "tradingview_news_flow",
                 "source": "TradingView",
                 "symbol": "",
                 "symbols": "",
@@ -221,19 +337,47 @@ def article_key(row: dict[str, Any]) -> str:
     return (clean(row.get("url")) or clean(row.get("title"))).lower()
 
 
-def macro_score(text: str) -> tuple[float, list[str]]:
+def news_analysis(text: str) -> tuple[float, list[str], list[str], list[str]]:
     lowered = text.lower()
     score = 0.0
     hits: list[str] = []
-    for term, weight in BEARISH_TERMS.items():
-        if term in lowered:
-            score -= weight
-            hits.append(term)
-    for term, weight in BULLISH_TERMS.items():
+    themes: set[str] = set()
+    risk_flags: set[str] = set()
+    matched_terms: set[str] = set()
+    for term, weight, theme, flag in NEWS_RULES:
         if term in lowered:
             score += weight
             hits.append(term)
-    return max(-1.0, min(1.0, score)), hits
+            matched_terms.add(term)
+            themes.add(theme)
+            risk_flags.add(flag)
+    for term, weight in BEARISH_TERMS.items():
+        if term not in matched_terms and term in lowered:
+            score -= weight
+            hits.append(term)
+            matched_terms.add(term)
+    for term, weight in BULLISH_TERMS.items():
+        if term not in matched_terms and term in lowered:
+            score += weight
+            hits.append(term)
+            matched_terms.add(term)
+
+    if "hot_labor" in risk_flags and ("hawkish_fed" in risk_flags or "inflation_pressure" in risk_flags):
+        score -= 0.18
+        risk_flags.add("macro_policy_pressure")
+    if {"chip_selloff", "position_unwind"} & risk_flags and {"selloff_pressure", "market_cap_loss"} & risk_flags:
+        score -= 0.12
+        risk_flags.add("nq_growth_pressure")
+    if {"growth_underperformance", "chip_pressure", "chip_selloff"} & risk_flags:
+        themes.add("index")
+        risk_flags.add("nq_relative_weakness")
+
+    return max(-1.0, min(1.0, score)), hits, sorted(themes), sorted(risk_flags)
+
+
+def macro_score(text: str) -> tuple[float, list[str]]:
+    score, hits, _, _ = news_analysis(text)
+    return score, hits
 
 
 def categories(text: str) -> list[str]:
@@ -259,19 +403,23 @@ def sentiment_score(text: str) -> float:
 def interpret(row: dict[str, Any]) -> dict[str, Any]:
     text = " ".join([clean(row.get("title")), clean(row.get("summary"))])
     sent = sentiment_score(text)
-    macro, hits = macro_score(text)
-    blended = (macro * 0.75) + (sent * 0.25)
+    macro, hits, themes, risk_flags = news_analysis(text)
+    blended = (macro * 0.85) + (sent * 0.15)
     if blended >= 0.18:
         direction = "bullish"
     elif blended <= -0.18:
         direction = "bearish"
     else:
         direction = "mixed"
-    confidence = max(0.10, min(0.85, abs(blended)))
-    cats = categories(text)
+    confidence = max(0.10, min(0.92, abs(blended) + min(0.20, len(hits) * 0.03)))
+    cats = sorted(set(categories(text)) | set(themes))
     reason_parts = []
     if hits:
         reason_parts.append("terms=" + "|".join(hits[:5]))
+    if themes:
+        reason_parts.append("themes=" + "|".join(themes[:5]))
+    if risk_flags:
+        reason_parts.append("flags=" + "|".join(risk_flags[:5]))
     reason_parts.append(f"macro={macro:.2f}")
     reason_parts.append(f"sentiment={sent:.2f}")
     return {
@@ -281,6 +429,8 @@ def interpret(row: dict[str, Any]) -> dict[str, Any]:
         "direction": direction,
         "confidence": confidence,
         "categories": ";".join(cats),
+        "themes": ";".join(themes),
+        "risk_flags": ";".join(risk_flags),
         "reason": ", ".join(reason_parts),
     }
 
@@ -296,7 +446,11 @@ def write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
             writer.writerow(out)
 
 
-def context_payload(rows: list[dict[str, Any]], now: datetime, valid_minutes: int) -> dict[str, Any]:
+def split_field(value: Any) -> list[str]:
+    return [part.strip() for part in clean(value).split(";") if part.strip()]
+
+
+def news_bias(rows: list[dict[str, Any]]) -> dict[str, Any]:
     scored = [row for row in rows if row.get("direction") in {"bullish", "bearish"}]
     score = sum(float(row.get("confidence") or 0.0) * (1 if row.get("direction") == "bullish" else -1) for row in scored)
     score = max(-1.0, min(1.0, score / max(1, len(scored))))
@@ -309,30 +463,63 @@ def context_payload(rows: list[dict[str, Any]], now: datetime, valid_minutes: in
     confidence = max(0.0, min(0.80, abs(score) + min(0.20, len(scored) * 0.03)))
     top = sorted(scored, key=lambda row: float(row.get("confidence") or 0.0), reverse=True)[:3]
     reason = "; ".join(f"{row['direction']} {row['title']}" for row in top) or "No directional news interpretation"
+    themes = sorted({theme for row in rows for theme in split_field(row.get("themes") or row.get("categories"))})
+    risk_flags = sorted({flag for row in rows for flag in split_field(row.get("risk_flags"))})
+    return {
+        "direction": direction,
+        "confidence": confidence,
+        "score": score,
+        "reason": reason,
+        "headline": clean(top[0].get("title")) if top else "",
+        "themes": themes,
+        "risk_flags": risk_flags,
+        "article_count": len(rows),
+        "directional_count": len(scored),
+    }
+
+
+def context_payload(rows: list[dict[str, Any]], now: datetime, valid_minutes: int) -> dict[str, Any]:
+    bias = news_bias(rows)
     return {
         "items": [
             {
                 "valid_until": iso_z(now + timedelta(minutes=valid_minutes)),
                 "source": "macro_news_feed",
-                "direction": direction,
-                "confidence": confidence,
-                "headline": clean(top[0].get("title")) if top else "",
-                "reason": reason,
-                "article_count": len(rows),
-                "directional_count": len(scored),
+                "direction": bias["direction"],
+                "confidence": bias["confidence"],
+                "headline": bias["headline"],
+                "reason": bias["reason"],
+                "themes": bias["themes"],
+                "risk_flags": bias["risk_flags"],
+                "article_count": bias["article_count"],
+                "directional_count": bias["directional_count"],
             }
         ]
     }
 
 
-def summary_payload(rows: list[dict[str, Any]], errors: list[str], now: datetime) -> dict[str, Any]:
+def summary_payload(
+    rows: list[dict[str, Any]],
+    errors: list[str],
+    attempts: list[dict[str, Any]],
+    source_used: str,
+    now: datetime,
+) -> dict[str, Any]:
     counts = {"bullish": 0, "bearish": 0, "mixed": 0}
     for row in rows:
         counts[row.get("direction", "mixed")] = counts.get(row.get("direction", "mixed"), 0) + 1
+    bias = news_bias(rows)
     return {
         "checked_at": iso_z(now),
+        "source_used": source_used,
+        "provider_attempts": attempts,
         "rows": len(rows),
         "direction_counts": counts,
+        "news_bias": bias["direction"],
+        "news_bias_score": bias["score"],
+        "news_bias_confidence": bias["confidence"],
+        "themes": bias["themes"],
+        "risk_flags": bias["risk_flags"],
         "latest_titles": [clean(row.get("title")) for row in rows[:5]],
         "errors": errors,
     }
@@ -347,7 +534,8 @@ def is_fresh(path: Path, minutes: int) -> bool:
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Fetch and interpret fast NQ-relevant market news.")
-    p.add_argument("--provider", choices=["yahoo", "tradingview", "auto"], default="yahoo")
+    p.add_argument("--provider", choices=["yahoo", "yahoo_rss", "tradingview", "auto"], default="auto")
+    p.add_argument("--tradingview-news-url", default=TRADINGVIEW_NEWS_FLOW_URL)
     p.add_argument("--symbols", default=DEFAULT_SYMBOLS)
     p.add_argument("--max-per-symbol", type=int, default=8)
     p.add_argument("--max-items", type=int, default=40)
@@ -362,22 +550,45 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
-def fetch_rows(args: argparse.Namespace) -> tuple[list[dict[str, Any]], list[str]]:
+def fetch_rows(args: argparse.Namespace) -> tuple[list[dict[str, Any]], list[str], list[dict[str, Any]], str]:
     errors: list[str] = []
     rows: list[dict[str, Any]] = []
-    providers = ["yahoo", "tradingview"] if args.provider == "auto" else [args.provider]
+    attempts: list[dict[str, Any]] = []
+    source_used = ""
+    providers = ["yahoo", "yahoo_rss", "tradingview"] if args.provider == "auto" else [args.provider]
     for provider in providers:
         try:
             if provider == "yahoo":
+                before = len(rows)
                 for symbol in split_symbols(args.symbols):
                     rows.extend(fetch_yahoo_symbol(symbol, args.max_per_symbol, args.timeout))
+                attempts.append({"provider": provider, "ok": True, "rows": len(rows) - before})
+            elif provider == "yahoo_rss":
+                before = len(rows)
+                for symbol in split_symbols(args.symbols):
+                    rows.extend(fetch_yahoo_rss_symbol(symbol, args.max_per_symbol, args.timeout))
+                attempts.append({"provider": provider, "ok": True, "rows": len(rows) - before})
             else:
-                rows.extend(fetch_tradingview(args.max_items, args.timeout))
+                before = len(rows)
+                rows.extend(fetch_tradingview(args.max_items, args.timeout, args.tradingview_news_url))
+                if len(rows) == before:
+                    normalized = normalize_tradingview_url(args.tradingview_news_url)
+                    warning = (
+                        "tradingview: no static headlines found at "
+                        f"{normalized}; TradingView may be serving this feed through browser-side JavaScript"
+                    )
+                    errors.append(warning)
+                    attempts.append({"provider": provider, "ok": True, "rows": 0, "warning": warning})
+                else:
+                    attempts.append({"provider": provider, "ok": True, "rows": len(rows) - before})
             if rows:
+                source_used = provider
                 break
         except Exception as exc:
-            errors.append(f"{provider}: {exc}")
-    return rows, errors
+            error = f"{provider}: {exc}"
+            errors.append(error)
+            attempts.append({"provider": provider, "ok": False, "rows": 0, "error": str(exc)})
+    return rows, errors, attempts, source_used
 
 
 def main() -> None:
@@ -390,7 +601,7 @@ def main() -> None:
         return
 
     now = utc_now()
-    raw_rows, errors = fetch_rows(args)
+    raw_rows, errors, attempts, source_used = fetch_rows(args)
     cutoff = now - timedelta(hours=args.lookback_hours)
     deduped: dict[str, dict[str, Any]] = {}
     for row in raw_rows:
@@ -402,12 +613,14 @@ def main() -> None:
             continue
         key = article_key(row)
         if key and key not in deduped:
-            deduped[key] = interpret(row)
+            interpreted = interpret(row)
+            interpreted["valid_until"] = iso_z(now + timedelta(minutes=args.context_valid_minutes))
+            deduped[key] = interpreted
 
     rows = sorted(deduped.values(), key=lambda row: row.get("published_at") or now, reverse=True)[: args.max_items]
     write_csv(output, rows)
     context_output.write_text(json.dumps(context_payload(rows, now, args.context_valid_minutes), indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    summary_output.write_text(json.dumps(summary_payload(rows, errors, now), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    summary_output.write_text(json.dumps(summary_payload(rows, errors, attempts, source_used, now), indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(f"Wrote {len(rows)} interpreted news rows to {output}.")
     if errors:
         print("News fetch warnings: " + "; ".join(errors))

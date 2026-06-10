@@ -5,6 +5,7 @@ const DATA_PATHS = {
   status: "../macro_pipeline_status.json",
   alerts: "../macro_pipeline_alert_summary.json",
   news: "../macro_news_feed.csv",
+  newsSummary: "../macro_news_feed_summary.json",
 };
 
 const DISPLAY_TIME_ZONE = "America/New_York";
@@ -31,6 +32,7 @@ const state = {
   performance: [],
   trust: [],
   news: [],
+  newsSummary: null,
   status: null,
   alertSummary: null,
   activeTab: "signals",
@@ -309,6 +311,9 @@ function normalizeNews(rows) {
         direction: ["bullish", "bearish", "mixed"].includes(direction) ? direction : "mixed",
         confidence,
         published,
+        validUntil: parseReleaseDate(row.valid_until),
+        themes: clean(row.themes || row.categories, "").split(";").map((part) => part.trim()).filter(Boolean),
+        riskFlags: clean(row.risk_flags, "").split(";").map((part) => part.trim()).filter(Boolean),
       };
     })
     .sort((a, b) => (b.published?.getTime() || 0) - (a.published?.getTime() || 0));
@@ -452,46 +457,114 @@ function renderAlerts() {
   `;
 }
 
+function ageSeconds(value) {
+  const date = parseReleaseDate(value);
+  if (!date) {
+    return NaN;
+  }
+  return Math.max(0, (Date.now() - date.getTime()) / 1000);
+}
+
+function ageLabel(seconds) {
+  if (!Number.isFinite(seconds)) {
+    return "unknown age";
+  }
+  if (seconds < 90) {
+    return `${Math.round(seconds)}s ago`;
+  }
+  const minutes = seconds / 60;
+  if (minutes < 90) {
+    return `${Math.round(minutes)}m ago`;
+  }
+  return `${(minutes / 60).toFixed(1)}h ago`;
+}
+
 function renderNews() {
   const rows = state.news.slice(0, 8);
-  if (!rows.length) {
-    els.newsPanel.classList.remove("active");
-    els.newsPanel.innerHTML = "";
-    return;
-  }
-
+  const summary = state.newsSummary || {};
   const counts = rows.reduce((out, row) => {
     out[row.direction] = (out[row.direction] || 0) + 1;
     return out;
   }, {});
+  const checkedAt = clean(summary.checked_at, "");
+  const checkedAge = ageSeconds(checkedAt);
+  const loopSeconds = numberValue(state.status?.loop_seconds, 60);
+  const staleThreshold = Math.max(180, loopSeconds * 3);
+  const sourceUsed = clean(summary.source_used || state.status?.news_feed_provider, "unknown");
+  const bias = clean(summary.news_bias, rows[0]?.direction || "mixed").toLowerCase();
+  const biasClass = ["bullish", "bearish", "mixed"].includes(bias) ? bias : "mixed";
+  const biasConfidence = numberValue(summary.news_bias_confidence, NaN);
+  const themes = Array.isArray(summary.themes) && summary.themes.length
+    ? summary.themes
+    : Array.from(new Set(rows.flatMap((row) => row.themes))).slice(0, 6);
+  const riskFlags = Array.isArray(summary.risk_flags) && summary.risk_flags.length
+    ? summary.risk_flags
+    : Array.from(new Set(rows.flatMap((row) => row.riskFlags))).slice(0, 6);
+  const warnings = [];
+  if (!state.newsSummary) {
+    warnings.push("News summary JSON could not be loaded.");
+  } else if (summary.load_error) {
+    warnings.push(`News summary JSON could not be loaded: ${summary.load_error}`);
+  }
+  if (Number.isFinite(checkedAge) && checkedAge > staleThreshold) {
+    warnings.push(`News feed stale: last checked ${ageLabel(checkedAge)}.`);
+  }
+  if (!Number.isFinite(checkedAge)) {
+    warnings.push("News feed check time is unavailable.");
+  }
+  if (!rows.length) {
+    warnings.push("No interpreted headlines are available.");
+  }
+  if (Array.isArray(summary.errors)) {
+    warnings.push(...summary.errors.filter(Boolean).slice(0, 3));
+  }
+
   els.newsPanel.classList.add("active");
   els.newsPanel.innerHTML = `
     <div class="news-head">
       <div>
         <h2>Interpreted News</h2>
-        <span>${rows.length} latest, ${counts.bearish || 0} bearish / ${counts.bullish || 0} bullish</span>
+        <span>${rows.length} latest, ${counts.bearish || 0} bearish / ${counts.bullish || 0} bullish / source ${escapeHtml(sourceUsed)} / checked ${escapeHtml(ageLabel(checkedAge))}</span>
       </div>
-      <a class="button ghost" href="../macro_news_feed.csv">News CSV</a>
+      <div class="news-actions">
+        <span class="badge ${escapeHtml(biasClass)}">${escapeHtml(titleCase(bias))}${Number.isFinite(biasConfidence) ? ` ${percent(biasConfidence, 0)}` : ""}</span>
+        <a class="button ghost" href="../macro_news_feed.csv">News CSV</a>
+      </div>
+    </div>
+    ${warnings.length ? `
+      <div class="news-warning">
+        ${warnings.map((warning) => `<div>${escapeHtml(warning)}</div>`).join("")}
+      </div>
+    ` : ""}
+    <div class="news-meta">
+      ${themes.slice(0, 6).map((theme) => `<span>${escapeHtml(titleCase(theme))}</span>`).join("")}
+      ${riskFlags.slice(0, 6).map((flag) => `<span class="risk">${escapeHtml(titleCase(flag))}</span>`).join("")}
     </div>
     <div class="news-list">
-      ${rows.map((row) => {
+      ${rows.length ? rows.map((row) => {
         const url = clean(row.url, "");
         const title = clean(row.title, "Untitled news");
         const source = clean(row.source || row.provider, "news");
         const reason = clean(row.reason, "");
         const time = row.published ? formatTime(row.published_at) : "--";
+        const rowMeta = [
+          source,
+          time,
+          `confidence ${percent(row.confidence, 0)}`,
+          row.themes.length ? `themes ${row.themes.slice(0, 3).join(", ")}` : "",
+        ].filter(Boolean).join(" / ");
         const content = `
           <span class="badge ${escapeHtml(row.direction)}">${escapeHtml(titleCase(row.direction))}</span>
           <div class="news-copy">
             <strong title="${escapeHtml(title)}">${escapeHtml(title)}</strong>
-            <span title="${escapeHtml(reason)}">${escapeHtml(source)} / ${escapeHtml(time)} / confidence ${percent(row.confidence, 0)}</span>
+            <span title="${escapeHtml(reason)}">${escapeHtml(rowMeta)}</span>
             ${reason ? `<em title="${escapeHtml(reason)}">${escapeHtml(reason)}</em>` : ""}
           </div>
         `;
         return url
           ? `<a class="news-item" href="${escapeHtml(url)}" target="_blank" rel="noreferrer">${content}</a>`
           : `<div class="news-item">${content}</div>`;
-      }).join("")}
+      }).join("") : '<div class="news-empty">Waiting for the next successful news pull.</div>'}
     </div>
   `;
 }
@@ -905,13 +978,14 @@ function escapeHtml(value) {
 async function loadAll() {
   els.dataStamp.textContent = "Loading data";
   try {
-    const [signals, performance, trust, status, alertSummary, news] = await Promise.all([
+    const [signals, performance, trust, status, alertSummary, news, newsSummary] = await Promise.all([
       fetchCsv(DATA_PATHS.signals),
       fetchCsv(DATA_PATHS.performance),
       fetchCsv(DATA_PATHS.trust),
       fetchJson(DATA_PATHS.status).catch(() => null),
       fetchJson(DATA_PATHS.alerts).catch(() => null),
       fetchCsv(DATA_PATHS.news).catch(() => []),
+      fetchJson(DATA_PATHS.newsSummary).catch((error) => ({ load_error: error.message })),
     ]);
     state.signals = normalizeSignals(signals);
     state.performance = performance;
@@ -919,6 +993,7 @@ async function loadAll() {
     state.status = status;
     state.alertSummary = alertSummary;
     state.news = normalizeNews(news);
+    state.newsSummary = newsSummary;
     state.selectedId = state.signals[0]?.id || "";
     renderAll();
   } catch (error) {

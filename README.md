@@ -21,7 +21,8 @@ each responsibility separate:
 - `macro_alert_notify.py` sends optional notifications for newly detected alerts.
 - `macro_daily_confirmation.py` adds the temporary daily baseline confirmation.
 - `macro_regime.py` separates release-rule direction from live-market regime.
-- `macro_news_feed.py` fetches and interprets fast Yahoo/TradingView headlines.
+- `macro_news_feed.py` fetches and interprets fast Yahoo JSON, Yahoo RSS, and
+  optional TradingView headlines.
 - `dashboard/` displays the current signals, performance, and trust weights.
 
 Older validation tools, broker exports, sample files, duplicate parquet outputs,
@@ -148,10 +149,15 @@ Live-regime override:
 - The pipeline now rebuilds `macro_live_regime_context.json` from market tape,
   interpreted news, optional ORB/tape signal files, and optional news-rule
   context before the trust and daily-confirmation stages.
-- The default fast headline source is Yahoo Finance. The runner writes
+- The default fast headline mode is `auto`: Yahoo Finance JSON first, Yahoo RSS
+  second, then TradingView news-flow as a last fallback. TradingView news-flow
+  can be forced with `--news-feed-provider tradingview`; the default TradingView
+  URL is `https://www.tradingview.com/news-flow/?market=stock,etf,futures`.
+  The runner writes
   `macro_news_feed.csv`, `macro_news_feed_summary.json`, and
-  `macro_news_context.json`; the dashboard shows the latest interpreted
-  headlines in the `Interpreted News` panel.
+  `macro_news_context.json`; the dashboard shows source, age, bias, warnings,
+  themes, risk flags, and latest interpreted headlines in the `Interpreted News`
+  panel.
 - Create a local `macro_regime_context.json` when fresh news or price action is
   overriding the generated rules. This file is ignored by Git so it can be
   changed during the session without polluting commits. Use
@@ -189,11 +195,19 @@ browser does not mix old JavaScript with new HTML.
 Manual news refresh:
 
 ```powershell
-python .\macro_news_feed.py --provider yahoo --force
+python .\macro_news_feed.py --provider auto --force
 python .\macro_live_regime_builder.py
 ```
 
-Use `--provider auto` to try Yahoo first and then TradingView if Yahoo does not
+Force the TradingView news-flow source:
+
+```powershell
+python .\macro_news_feed.py --provider tradingview --tradingview-news-url "https://www.tradingview.com/news-flow/?market=stock,etf,futures" --force
+python .\macro_live_regime_builder.py
+```
+
+Use `--provider yahoo_rss` to force Yahoo RSS. Use `--provider auto` to try
+Yahoo JSON, Yahoo RSS, and then TradingView if the earlier providers do not
 return usable headlines.
 
 Stop the background processes when needed:
@@ -549,9 +563,12 @@ python .\macro_pipeline_runner.py --run-forever --watch-releases --loop-seconds 
 Optional switches:
 
 - `--market-preset intraday` refreshes Yahoo data before the live cycle.
-- `--news-feed-provider yahoo` fetches and interprets Yahoo Finance headlines
-  before the live-regime context is built. Use `auto` to try Yahoo first and
-  then TradingView.
+- `--news-feed-provider auto` fetches and interprets headlines before the
+  live-regime context is built. Auto tries Yahoo JSON, Yahoo RSS, then
+  TradingView.
+- `--news-feed-tradingview-url` controls the TradingView news-flow page used
+  when the news provider is `tradingview` or `auto`; the default is
+  `https://www.tradingview.com/news-flow/?market=stock,etf,futures`.
 - `--skip-news-feed` disables the interpreted headline fetch.
 - `--refresh-performance` rebuilds signal grades and performance summaries when
   reaction files are already current.
@@ -614,7 +631,10 @@ The notifier can also read `macro_alert_notify_config.json`. The committed
 `macro_alert_notify_config.example.json` shows webhook, email, and risk-lock
 settings. The local config is ignored by Git so private webhook URLs and SMTP
 details stay on the machine. A safe local default is `risk_lock,popup`, which
-writes `macro_alert_risk_lock.json` and shows a Windows desktop popup.
+writes `macro_alert_risk_lock.json` and shows a Windows desktop popup. The
+risk-lock target also scans the current signal CSV for release-rule/live-regime
+conflicts, so a `no_long_wait_for_reclaim` state remains visible even after the
+first alert has already been delivered.
 
 Run the 24/7 loop with local notification output:
 
@@ -729,7 +749,7 @@ Those files are kept for reference, not deleted.
 | `macro_reaction_study.py` | Historical event-to-price reaction study and live-release calibration. |
 | `macro_daily_source_compare.py` | Daily source-to-source reaction comparison report. |
 | `macro_daily_confirmation.py` | Temporary daily baseline confirmation layer for current live signals. |
-| `macro_news_feed.py` | Fast Yahoo/TradingView headline fetcher and interpreter. |
+| `macro_news_feed.py` | Fast Yahoo JSON/Yahoo RSS/TradingView headline fetcher and interpreter. |
 | `macro_live_regime_builder.py` | Generated market-tape/news live-regime context builder. |
 | `macro_regime.py` | Release-rule versus live-regime conflict layer and trade-state labeling. |
 | `macro_regime_context.example.json` | Template for a local manual/news regime override. |

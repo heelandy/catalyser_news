@@ -118,6 +118,7 @@ def apply_config(args: argparse.Namespace, argv: list[str]) -> argparse.Namespac
         "targets": ("--targets",),
         "min_severity": ("--min-severity",),
         "scan_history": ("--scan-history",),
+        "signals": ("--signals",),
         "webhook_url": ("--webhook-url",),
         "webhook_timeout": ("--webhook-timeout",),
         "email_to": ("--email-to",),
@@ -261,15 +262,53 @@ def email_notify(alerts: list[dict[str, Any]], args: argparse.Namespace) -> None
         smtp.send_message(msg)
 
 
+def signal_risk_locks(path: Path) -> list[dict[str, Any]]:
+    locks: list[dict[str, Any]] = []
+    for row in read_csv_rows(path):
+        conflict = clean(row.get("market_regime_conflict"), "none").lower()
+        trade_state = clean(row.get("trade_state"), "").lower()
+        release_direction = clean(row.get("release_rule_direction") or row.get("release_rule_side"), "").lower()
+        regime_direction = clean(row.get("live_market_regime_direction"), "").lower()
+        final_warning = clean(row.get("final_warning") or row.get("trust_warning") or row.get("warning"), "")
+        reason = clean(row.get("trade_state_reason") or row.get("live_market_regime_reason") or final_warning, "")
+
+        release_positive = release_direction in {"bullish", "positive", "long", "market_positive"}
+        live_bearish = regime_direction in {"bearish", "risk_off", "negative"}
+        no_long_state = trade_state.startswith("no_long") or "no_long" in trade_state
+        warning_lock = "avoid long" in final_warning.lower() or "no long" in final_warning.lower()
+
+        if conflict == "none" and not no_long_state and not (release_positive and live_bearish) and not warning_lock:
+            continue
+
+        locks.append(
+            {
+                "release_time": clean(row.get("release_time") or row.get("date")),
+                "title": clean(row.get("title"), "macro signal"),
+                "event_family": clean(row.get("event_family")),
+                "severity": "high" if no_long_state or (release_positive and live_bearish) else "medium",
+                "market_regime_conflict": conflict,
+                "trade_state": trade_state,
+                "release_rule_direction": release_direction,
+                "live_market_regime_direction": regime_direction,
+                "live_market_regime": clean(row.get("live_market_regime")),
+                "reason": reason or "Release rule and live regime require risk lock review.",
+            }
+        )
+    return locks
+
+
 def risk_lock_notify(alerts: list[dict[str, Any]], args: argparse.Namespace) -> None:
     threshold = severity_value(args.risk_lock_severity)
     lock_alerts = [alert for alert in alerts if severity_value(clean(alert.get("severity")).lower()) >= threshold]
+    signal_locks = signal_risk_locks(Path(args.signals))
     payload = {
         "updated_at": now_iso(),
-        "active": bool(lock_alerts),
+        "active": bool(lock_alerts or signal_locks),
         "severity_threshold": args.risk_lock_severity,
         "alert_count": len(lock_alerts),
+        "signal_lock_count": len(signal_locks),
         "alerts": lock_alerts,
+        "signal_locks": signal_locks,
         "note": "Local handoff only. Trading systems must decide how to consume this file.",
     }
     write_json(Path(args.risk_lock_output), payload)
@@ -363,6 +402,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--config", default="macro_alert_notify_config.json", help="Optional notification config JSON")
     p.add_argument("--summary", default="macro_pipeline_alert_summary.json")
     p.add_argument("--alerts-csv", default="macro_pipeline_alerts.csv")
+    p.add_argument("--signals", default="macro_live_signal_current.csv")
     p.add_argument("--state", default="macro_alert_notify_state.json")
     p.add_argument("--status-output", default="macro_alert_notify_status.json")
     p.add_argument("--targets", default=DEFAULT_TARGETS, help="Comma-separated: console,bell,popup,webhook,email,risk_lock")
@@ -409,6 +449,11 @@ def main() -> None:
         errors = send_to_targets(pending, targets, args)
     elif pending:
         console_notify(pending)
+    elif "risk_lock" in targets and not args.dry_run:
+        try:
+            risk_lock_notify([], args)
+        except Exception as exc:
+            errors.append(f"risk_lock: {exc}")
 
     delivered_now = [] if errors else [alert_fingerprint(alert) for alert in pending]
     delivered.update(delivered_now)
