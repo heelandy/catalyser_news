@@ -4,8 +4,8 @@ Shared live-regime filter for macro catalyst signals.
 
 The event-level market rule answers "what does this number usually imply?".
 The live-regime layer answers "does the current tape/news backdrop agree with
-that event-level rule?". It can infer a simple context from current released
-signals, or use an optional manual/news override JSON.
+that event-level rule?". It can use a manual override JSON, a generated
+tape/news context JSON, or infer a simple context from current released signals.
 """
 from __future__ import annotations
 
@@ -95,30 +95,29 @@ def release_rule_fields(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _manual_context(path: str) -> dict[str, Any] | None:
+def _context_file(path: str, default_source: str, expired_source: str) -> dict[str, Any] | None:
     if not path:
         return None
     p = Path(path)
     if not p.exists():
         return None
-    data = json.loads(p.read_text(encoding="utf-8"))
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    if not isinstance(data, dict):
+        return None
     valid_until = parse_time(data.get("valid_until") or data.get("expires_at"))
     if valid_until and valid_until < utc_now():
-        return {
-            "live_market_regime": "neutral",
-            "live_market_regime_direction": "mixed",
-            "live_market_regime_confidence": 0.0,
-            "live_market_regime_reason": f"{p.name} expired at {valid_until.isoformat()}",
-            "live_market_regime_source": "manual_expired",
-        }
+        return None
 
     regime = text_value(data.get("live_market_regime") or data.get("regime") or "manual_context")
     direction = text_value(data.get("live_market_regime_direction") or data.get("direction") or "mixed").lower()
     if direction not in {"bullish", "bearish", "mixed"}:
         direction = "mixed"
     confidence = clamp(as_float(data.get("live_market_regime_confidence") or data.get("confidence"), 0.65), 0.0, 1.0)
-    reason = text_value(data.get("live_market_regime_reason") or data.get("reason") or "Manual/news regime context")
-    source = text_value(data.get("live_market_regime_source") or data.get("source") or f"manual:{p.name}")
+    reason = text_value(data.get("live_market_regime_reason") or data.get("reason") or f"{p.name} regime context")
+    source = text_value(data.get("live_market_regime_source") or data.get("source") or f"{default_source}:{p.name}")
     return {
         "live_market_regime": regime,
         "live_market_regime_direction": direction,
@@ -126,6 +125,14 @@ def _manual_context(path: str) -> dict[str, Any] | None:
         "live_market_regime_reason": reason,
         "live_market_regime_source": source,
     }
+
+
+def _manual_context(path: str) -> dict[str, Any] | None:
+    return _context_file(path, "manual", "manual_expired")
+
+
+def _generated_context(path: str) -> dict[str, Any] | None:
+    return _context_file(path, "generated", "generated_expired")
 
 
 def infer_regime_context(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -185,9 +192,18 @@ def infer_regime_context(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def load_regime_context(path: str, rows: list[dict[str, Any]]) -> dict[str, Any]:
+def load_regime_context(
+    path: str,
+    rows: list[dict[str, Any]],
+    generated_path: str = "macro_live_regime_context.json",
+) -> dict[str, Any]:
     manual = _manual_context(path)
-    return manual if manual is not None else infer_regime_context(rows)
+    if manual is not None:
+        return manual
+    generated = _generated_context(generated_path)
+    if generated is not None:
+        return generated
+    return infer_regime_context(rows)
 
 
 def apply_regime_to_row(

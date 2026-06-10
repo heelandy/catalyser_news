@@ -1,0 +1,35 @@
+{
+  "signals": [
+    {
+      "time": "2026-06-09T10:05:00-04:00",
+      "valid_until": "2026-06-09T13:05:00-04:00",
+      "source": "HIGHSTRIKE_ORB_V1",
+      "symbol": "NQ",
+      "message": "HIGHSTRIKE ORB: SHORT breakout confirmed",
+      "direction": "bearish",
+      "confidence": 0.75
+    },
+    {
+      "time": "2026-06-09T10:20:00-04:00",
+      "valid_until": "2026-06-09T13:20:00-04:00",
+      "source": "HIGHSTRIKE_ORB_OPTIONS",
+      "symbol": "QQQ",
+      "message": "HIGHSTRIKE ORB options: LONG - buy CALL / debit call spread / credit put spread",
+      "direction": "bullish",
+      "confidence": 0.70
+    }
+  ]
+}
+*** Add File: macro_news_context.example.json
+{
+  "items": [
+    {
+      "valid_until": "2026-06-09T18:00:00-04:00",
+      "source": "operator_news_rules",
+      "headline": "Hot NFP and chip selloff are pressuring growth names",
+      "direction": "bearish",
+      "confidence": 0.70,
+      "reason": "Hot labor data plus hawkish rate pressure and semiconductor selloff are risk-off for NQ."
+    }
+  ]
+}

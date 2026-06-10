@@ -372,6 +372,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--min-probability", type=float, default=0.05)
     p.add_argument("--max-probability", type=float, default=0.95)
     p.add_argument("--regime-context", default="macro_regime_context.json", help="Optional manual/news regime context JSON")
+    p.add_argument("--generated-regime-context", default="macro_live_regime_context.json", help="Generated tape/news regime context JSON")
     return p.parse_args()
 
 
@@ -392,7 +393,7 @@ def main() -> None:
         args.min_probability,
         args.max_probability,
     )
-    regime_context = load_regime_context(args.regime_context, adjusted.to_dict("records"))
+    regime_context = load_regime_context(args.regime_context, adjusted.to_dict("records"), args.generated_regime_context)
     adjusted = apply_regime_to_frame(adjusted, regime_context, args.bullish_threshold, args.bearish_threshold)
     adjusted.to_csv(args.adjusted_output, index=False)
     print(f"Wrote {len(adjusted)} trust-adjusted live signals to {args.adjusted_output}.")

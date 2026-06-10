@@ -1,0 +1,210 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © heelandy
+// ═══════════════════════════════════════════════════════════════════
+// HIGHSTRIKE ORB — OPTIONS (SPY / QQQ). Translates the SAME gated ORB signal as the V1 strategy/
+// indicator into option structures: buy call/put, debit (vertical) spread, credit (vertical) spread.
+// STRIKES ARE DERIVED FROM THE ORB LEVELS — the breakout level is the ATM, the target caps the debit
+// spread, the stop is the short leg of the credit spread (your cushion). Shown in a clean dashboard
+// so it does NOT overload the V1 indicator's SL/TP/MTF visuals.
+//
+// LIMITATION: Pine has NO options-chain / IV / premium / Greeks access. This outputs STRIKES +
+// STRUCTURE + THESIS only — price the actual contracts (premium, breakeven, Greeks) at your broker.
+// Same signal core as HIGHSTRIKE_ORB_V1_INDICATOR.pine (MTF gate omitted = its default-off state).
+// ═══════════════════════════════════════════════════════════════════
+//@version=6
+indicator("HIGHSTRIKE ORB Options", overlay=true, max_labels_count=100)
+
+// ───────────────────────── INPUTS ─────────────────────────
+long_on  = input.bool(true, "LONG signals",  group="Direction", inline="d")
+short_on = input.bool(true, "SHORT signals", group="Direction", inline="d")
+or_start = input.session("0930-1000", "Opening Range window (ET)", group="ORB")
+sess_tz  = input.string("America/New_York", "Timezone", options=["America/New_York","America/Chicago","Europe/London"], group="ORB")
+trade_end_hhmm = input.int(1500, "Stop new signals after HHMM (ET)", group="ORB", minval=0, maxval=2359)
+brk_buf_atr = input.float(0.10, "Breakout strength (clear OR by x ATR)", group="ORB", step=0.05, minval=0.0)
+auto_tf  = input.bool(true, "Auto config per timeframe", group="ORB",
+            tooltip="Breakout buffer <=5m -> 0.0, else 0.25 ATR. Cutoff 15:00 (all day). OFF = manual.")
+trend_ema_f = input.int(21, "Trend EMA fast", group="Trend", minval=2)
+trend_ema_s = input.int(50, "Trend EMA slow", group="Trend", minval=5)
+local_adx_min = input.float(20.0, "Local ADX min (trend)", group="Local Regime", step=1)
+local_atr_hi  = input.float(2.5,  "Volatile ATR%",         group="Local Regime", step=0.25)
+block_range   = input.bool(true,  "Block signals in RANGE regime", group="Local Regime")
+macro_en       = input.bool(true,  "MACRO regime filter ON", group="Macro Regime")
+macro_standdown= input.bool(true,  "Macro stand-down vs SPY trend", group="Macro Regime")
+spy_sym  = input.symbol("SPY",      "Macro trend ref", group="Macro Regime")
+vix_sym  = input.symbol("CBOE:VIX", "Macro vol ref",   group="Macro Regime")
+vix_calm = input.float(15.0, "VIX calm",     group="Macro Regime", step=1)
+vix_vol  = input.float(25.0, "VIX volatile", group="Macro Regime", step=1)
+vix_ext  = input.float(35.0, "VIX extreme",  group="Macro Regime", step=1)
+spy_adx_min = input.float(25.0, "Macro ADX min", group="Macro Regime", step=1)
+persist_n   = input.int(3, "Regime persistence bars", group="Macro Regime", minval=1)
+block_d     = input.bool(true, "Block in REGIME D", group="Macro Regime")
+block_b     = input.bool(true, "Block trend in REGIME B", group="Macro Regime")
+sl_buf_atr  = input.float(0.3, "Stop buffer beyond OR x ATR", group="Levels", step=0.1)
+min_stop_atr= input.float(0.5, "Min stop x ATR", group="Levels", step=0.1)
+sl_max_atr  = input.float(2.5, "Max stop x ATR", group="Levels", step=0.25)
+tp1_rr      = input.float(1.0, "TP1 R (debit-spread cap)", group="Levels", step=0.25)
+tp2_rr      = input.float(4.0, "TP2 R", group="Levels", step=0.25)
+strike_inc  = input.float(1.0, "Strike increment $", group="Options", step=0.5, minval=0.5,
+              tooltip="SPY/QQQ trade $1 strikes (use 0.5 for the near-money 0DTE grid).")
+spread_w    = input.float(3.0, "Spread width $ (protection / cap leg)", group="Options", step=1.0, minval=1.0)
+show_table  = input.bool(true, "Show options dashboard", group="Options")
+show_levels = input.bool(true, "Show OR + entry level lines", group="Options")
+
+// ───────────────────────── CORE ─────────────────────────
+atr14 = ta.atr(14)
+[dip, dim, adxV] = ta.dmi(14, 14)
+atr_pct = close > 0 ? atr14 / close * 100.0 : 0.0
+emaF = ta.ema(close, trend_ema_f)
+emaS = ta.ema(close, trend_ema_s)
+bool trend_up   = close > emaS and emaF > emaS
+bool trend_down = close < emaS and emaF < emaS
+int o_now = hour(time, sess_tz) * 60 + minute(time, sess_tz)
+bool new_day = ta.change(time("D")) != 0
+bool rth = (dayofweek != dayofweek.saturday and dayofweek != dayofweek.sunday)
+int tf_s = timeframe.in_seconds()
+float eff_brk = auto_tf ? (tf_s <= 300 ? 0.0 : 0.25) : brk_buf_atr
+int   eff_cut_hhmm = auto_tf ? 1500 : trade_end_hhmm
+int trade_end = (eff_cut_hhmm / 100) * 60 + (eff_cut_hhmm % 100)
+
+// ───────────────────────── MACRO REGIME ─────────────────────────
+spy_b() =>
+    [_a,_b,sadx] = ta.dmi(14,14)
+    [close, ta.ema(close,20), ta.ema(close,50), sadx]
+vix_b() => ta.sma(close,5)
+[spc, se20, se50, sadx] = request.security(spy_sym, "D", spy_b(), lookahead=barmerge.lookahead_off, ignore_invalid_symbol=true)
+vix5 = request.security(vix_sym, "D", vix_b(), lookahead=barmerge.lookahead_off, ignore_invalid_symbol=true)
+bool spy_up = not na(spc) and spc > se20 and se20 > se50
+bool spy_dn = not na(spc) and spc < se20 and se20 < se50
+bool spy_trend = (spy_up or spy_dn) and not na(sadx) and sadx >= spy_adx_min
+string reg_raw = "-"
+if not na(vix5)
+    reg_raw := vix5 >= vix_ext ? "D" : vix5 >= vix_vol ? "C" : (vix5 < vix_calm and spy_trend) ? "A" : (vix5 < vix_vol and not spy_trend) ? "B" : spy_trend ? "A" : "B"
+var int reg_cnt = 0
+var string reg_pend = "-"
+var string reg_conf = "-"
+int need = reg_raw == "D" ? 0 : persist_n
+if reg_raw == "D"
+    reg_conf := "D"
+    reg_pend := "D"
+    reg_cnt := need
+else if reg_raw == reg_pend
+    reg_cnt += 1
+    if reg_cnt >= need
+        reg_conf := reg_raw
+else
+    reg_pend := reg_raw
+    reg_cnt := 1
+string regime = reg_conf != "-" ? reg_conf : reg_raw
+bool macro_allow = not macro_en or not ((regime == "D" and block_d) or (regime == "B" and block_b))
+bool macro_long_ok  = not macro_en or not macro_standdown or not spy_dn
+bool macro_short_ok = not macro_en or not macro_standdown or not spy_up
+
+// ───────────────────────── LOCAL REGIME ─────────────────────────
+int local_regime = atr_pct >= local_atr_hi ? 3 : adxV >= local_adx_min ? 1 : 2
+bool local_ok = not block_range or local_regime != 2
+
+// ───────────────────────── OPENING RANGE + LEVELS (frozen at OR close) ─────────────────────────
+bool in_or = not na(time(timeframe.period, or_start, sess_tz))
+var float or_high = na
+var float or_low  = na
+var bool  or_set  = false
+if new_day
+    or_high := na
+    or_low  := na
+    or_set  := false
+if in_or
+    or_high := na(or_high) ? high : math.max(or_high, high)
+    or_low  := na(or_low)  ? low  : math.min(or_low,  low)
+if not in_or and not na(or_high)
+    or_set := true
+float brk_buf = atr14 * eff_brk
+var float Le = na
+var float Ls = na
+var float Se = na
+var float Ss = na
+var bool  traded_l = false
+var bool  traded_s = false
+if new_day
+    Le := na
+    Ls := na
+    Se := na
+    Ss := na
+    traded_l := false
+    traded_s := false
+if or_set and na(Le) and not na(or_high) and not na(or_low)
+    Le := or_high + brk_buf
+    Ls := math.min(math.max(or_low  - atr14 * sl_buf_atr, Le - atr14 * sl_max_atr), Le - atr14 * min_stop_atr)
+    Se := or_low  - brk_buf
+    Ss := math.max(math.min(or_high + atr14 * sl_buf_atr, Se + atr14 * sl_max_atr), Se + atr14 * min_stop_atr)
+float Lt1 = Le + (Le - Ls) * tp1_rr
+float St1 = Se - (Ss - Se) * tp1_rr
+bool window = or_set and rth and o_now < trade_end and not na(Le)
+bool gate_long  = long_on  and trend_up   and macro_allow and macro_long_ok  and local_ok
+bool gate_short = short_on and trend_down  and macro_allow and macro_short_ok and local_ok
+bool long_fire  = window and not traded_l and gate_long  and high >= Le
+bool short_fire = window and not traded_s and gate_short and low  <= Se
+if long_fire
+    traded_l := true
+if short_fire
+    traded_s := true
+
+// ───────────────────────── OPTIONS TRANSLATION ─────────────────────────
+f_strike(p) => math.round(p / strike_inc) * strike_inc
+f_px(p) => str.tostring(p, "#.##")
+// display side: a FILLED side first, else the trend-aligned side (armed/pending)
+bool have = or_set and not na(Le) and not na(Se)
+int dside = traded_l ? 1 : traded_s ? -1 : trend_up ? 1 : trend_down ? -1 : 0
+bool islong = dside == 1
+bool shc = dside != 0                                        // a side chosen -> show the option contracts
+float e_  = islong ? Le  : Se
+float s_  = islong ? Ls  : Ss
+float t1_ = islong ? Lt1 : St1
+float atm  = f_strike(e_)
+float ds_s = f_strike(t1_)                                   // debit-spread short leg = cap @ TP1
+float cs_s = f_strike(s_)                                    // credit-spread short leg = the stop
+float cs_l = islong ? cs_s - spread_w : cs_s + spread_w      // credit-spread long leg = protection
+string oc = islong ? "C" : "P"                               // directional / debit = call(long) put(short)
+string cc = islong ? "P" : "C"                               // credit spread uses the OTHER side
+bool side_macro = islong ? macro_long_ok : macro_short_ok
+bool gated  = macro_allow and side_macro and local_ok
+bool filled = traded_l or traded_s
+string dir_txt = dside == 1 ? "LONG" : dside == -1 ? "SHORT" : "—"
+// live status — the stop-entry FIRES ON A TOUCH of the trigger, any bar until the cutoff (no close/retest needed)
+string st = tf_s > 1800 ? "use a 5m / 15m chart" : not have ? "OR forming…" : filled ? "FILLED ✓ — manage the trade" : not rth ? "off-session" : not window ? "window closed — no entry today" : dside == 0 ? "waiting: trend flat (need EMA stack)" : not gated ? "blocked: regime " + regime + (not side_macro ? " + SPY stand-down" : "") : "ARMED — fires when price touches " + f_px(e_)
+// expiry labels — show BOTH 0DTE and the nearest weekly Friday
+int wk_add = (6 - dayofweek + 7) % 7
+int t_wk = time + wk_add * 86400000
+string exp_both = "0DTE " + str.tostring(month(time)) + "/" + str.tostring(dayofmonth(time)) + "  ·  Wk " + str.tostring(month(t_wk)) + "/" + str.tostring(dayofmonth(t_wk))
+
+// ───────────────────────── VISUALS ─────────────────────────
+plot(show_levels and or_set ? or_high : na, "OR high", color=color.new(color.aqua, 70), style=plot.style_linebr)
+plot(show_levels and or_set ? or_low  : na, "OR low",  color=color.new(color.orange, 70), style=plot.style_linebr)
+plot(show_levels and window and not traded_l ? Le : na, "Long entry",  color=color.new(color.lime, 30), style=plot.style_linebr, linewidth=2)
+plot(show_levels and window and not traded_s ? Se : na, "Short entry", color=color.new(color.red, 30),  style=plot.style_linebr, linewidth=2)
+plotshape(long_fire,  "Long fire",  shape.triangleup,   location.belowbar, color.new(color.lime, 0), text="↑", size=size.tiny)
+plotshape(short_fire, "Short fire", shape.triangledown, location.abovebar, color.new(color.red, 0),  text="↓", size=size.tiny)
+alertcondition(long_fire,  "ORB Options LONG",  "HIGHSTRIKE ORB options: LONG — buy CALL / debit call spread / credit put spread (strikes from ORB levels)")
+alertcondition(short_fire, "ORB Options SHORT", "HIGHSTRIKE ORB options: SHORT — buy PUT / debit put spread / credit call spread (strikes from ORB levels)")
+
+var table t = table.new(position.top_right, 2, 9, bgcolor=color.new(color.black, 60), frame_color=color.gray, frame_width=1, border_color=color.new(color.gray, 70), border_width=1)
+if barstate.islast and show_table
+    color hd  = dside == 1 ? color.lime : dside == -1 ? color.red : color.silver
+    color stc = filled ? color.lime : (have and gated and dside != 0) ? color.aqua : color.orange
+    table.cell(t, 0, 0, "ORB OPTIONS", text_color=color.yellow, text_size=size.small)
+    table.cell(t, 1, 0, syminfo.ticker + "  " + dir_txt, text_color=hd, text_size=size.small)
+    table.cell(t, 0, 1, "Status", text_color=color.silver, text_size=size.tiny)
+    table.cell(t, 1, 1, st, text_color=stc, text_size=size.tiny)
+    table.cell(t, 0, 2, "OR", text_color=color.silver, text_size=size.tiny)
+    table.cell(t, 1, 2, have ? f_px(or_low) + " / " + f_px(or_high) : "forming", text_color=color.aqua, text_size=size.tiny)
+    table.cell(t, 0, 3, "Triggers", text_color=color.silver, text_size=size.tiny)
+    table.cell(t, 1, 3, have ? "long > " + f_px(Le) + "   short < " + f_px(Se) : "—", text_color=color.silver, text_size=size.tiny)
+    table.cell(t, 0, 4, "Buy " + (shc ? (islong ? "call" : "put") : ""), text_color=color.silver, text_size=size.tiny)
+    table.cell(t, 1, 4, shc ? f_px(atm) + oc + "  (ATM)" : "(waiting for trend side)", text_color=color.aqua, text_size=size.tiny)
+    table.cell(t, 0, 5, "Debit", text_color=color.silver, text_size=size.tiny)
+    table.cell(t, 1, 5, shc ? f_px(atm) + "/" + f_px(ds_s) + oc + "  cap @TP1" : "—", text_color=color.teal, text_size=size.tiny)
+    table.cell(t, 0, 6, "Credit", text_color=color.silver, text_size=size.tiny)
+    table.cell(t, 1, 6, shc ? f_px(cs_s) + "/" + f_px(cs_l) + cc + "  collect" : "—", text_color=color.new(color.green, 0), text_size=size.tiny)
+    table.cell(t, 0, 7, "Expiry", text_color=color.silver, text_size=size.tiny)
+    table.cell(t, 1, 7, exp_both, text_color=color.silver, text_size=size.tiny)
+    table.cell(t, 0, 8, "Note", text_color=color.silver, text_size=size.tiny)
+    table.cell(t, 1, 8, "strikes from ORB levels · price/IV at broker", text_color=color.gray, text_size=size.tiny)

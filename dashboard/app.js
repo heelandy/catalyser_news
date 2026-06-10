@@ -4,6 +4,7 @@ const DATA_PATHS = {
   trust: "../macro_signal_trust_weights.csv",
   status: "../macro_pipeline_status.json",
   alerts: "../macro_pipeline_alert_summary.json",
+  news: "../macro_news_feed.csv",
 };
 
 const DISPLAY_TIME_ZONE = "America/New_York";
@@ -29,6 +30,7 @@ const state = {
   signals: [],
   performance: [],
   trust: [],
+  news: [],
   status: null,
   alertSummary: null,
   activeTab: "signals",
@@ -49,6 +51,7 @@ const els = {
   metrics: document.querySelector("#metrics"),
   componentRanges: document.querySelector("#componentRanges"),
   alertPanel: document.querySelector("#alertPanel"),
+  newsPanel: document.querySelector("#newsPanel"),
   searchInput: document.querySelector("#searchInput"),
   categorySelect: document.querySelector("#categorySelect"),
   signalFilters: document.querySelector("#signalFilters"),
@@ -295,6 +298,22 @@ function normalizeSignals(rows) {
   });
 }
 
+function normalizeNews(rows) {
+  return rows
+    .map((row) => {
+      const direction = clean(row.direction, "mixed").toLowerCase();
+      const confidence = numberValue(row.confidence, 0);
+      const published = parseReleaseDate(row.published_at);
+      return {
+        ...row,
+        direction: ["bullish", "bearish", "mixed"].includes(direction) ? direction : "mixed",
+        confidence,
+        published,
+      };
+    })
+    .sort((a, b) => (b.published?.getTime() || 0) - (a.published?.getTime() || 0));
+}
+
 function setDataStamp() {
   const count = state.signals.length;
   const statusText = state.status && state.status.finished_at
@@ -428,6 +447,50 @@ function renderAlerts() {
             <em>${escapeHtml(time)}</em>
           </div>
         `;
+      }).join("")}
+    </div>
+  `;
+}
+
+function renderNews() {
+  const rows = state.news.slice(0, 8);
+  if (!rows.length) {
+    els.newsPanel.classList.remove("active");
+    els.newsPanel.innerHTML = "";
+    return;
+  }
+
+  const counts = rows.reduce((out, row) => {
+    out[row.direction] = (out[row.direction] || 0) + 1;
+    return out;
+  }, {});
+  els.newsPanel.classList.add("active");
+  els.newsPanel.innerHTML = `
+    <div class="news-head">
+      <div>
+        <h2>Interpreted News</h2>
+        <span>${rows.length} latest, ${counts.bearish || 0} bearish / ${counts.bullish || 0} bullish</span>
+      </div>
+      <a class="button ghost" href="../macro_news_feed.csv">News CSV</a>
+    </div>
+    <div class="news-list">
+      ${rows.map((row) => {
+        const url = clean(row.url, "");
+        const title = clean(row.title, "Untitled news");
+        const source = clean(row.source || row.provider, "news");
+        const reason = clean(row.reason, "");
+        const time = row.published ? formatTime(row.published_at) : "--";
+        const content = `
+          <span class="badge ${escapeHtml(row.direction)}">${escapeHtml(titleCase(row.direction))}</span>
+          <div class="news-copy">
+            <strong title="${escapeHtml(title)}">${escapeHtml(title)}</strong>
+            <span title="${escapeHtml(reason)}">${escapeHtml(source)} / ${escapeHtml(time)} / confidence ${percent(row.confidence, 0)}</span>
+            ${reason ? `<em title="${escapeHtml(reason)}">${escapeHtml(reason)}</em>` : ""}
+          </div>
+        `;
+        return url
+          ? `<a class="news-item" href="${escapeHtml(url)}" target="_blank" rel="noreferrer">${content}</a>`
+          : `<div class="news-item">${content}</div>`;
       }).join("")}
     </div>
   `;
@@ -650,11 +713,15 @@ function renderDetail() {
 
   state.selectedId = row.id;
   const warning = row.warningText ? `<div class="note">${escapeHtml(row.warningText)}</div>` : "";
-  const regimeWarning = row.regimeWarning ? `<div class="note warning">${escapeHtml(row.regimeWarning)}</div>` : "";
+  const regimeWarningText = clean(row.regimeWarning, "");
+  const regimeWarning = regimeWarningText ? `<div class="note warning">${escapeHtml(regimeWarningText)}</div>` : "";
   const ruleNote = clean(row.market_rule_note, "");
   const trustNote = clean(row.trust_note, "");
   const regimeReason = clean(row.live_market_regime_reason, "");
   const tradeReason = clean(row.trade_state_reason, "");
+  const tradeReasonNote = tradeReason && tradeReason !== regimeWarningText
+    ? `<div class="note">${escapeHtml(tradeReason)}</div>`
+    : "";
 
   els.detailPanel.innerHTML = `
     <div class="detail-head">
@@ -687,7 +754,7 @@ function renderDetail() {
     </div>
     ${regimeWarning}
     ${regimeReason ? `<div class="note">${escapeHtml(regimeReason)}</div>` : ""}
-    ${tradeReason ? `<div class="note">${escapeHtml(tradeReason)}</div>` : ""}
+    ${tradeReasonNote}
     ${ruleNote ? `<div class="note">${escapeHtml(ruleNote)}</div>` : ""}
     ${trustNote ? `<div class="note">${escapeHtml(trustNote)}</div>` : ""}
     ${row.daily_confirmation_note ? `<div class="note">${escapeHtml(row.daily_confirmation_note)}</div>` : ""}
@@ -816,6 +883,7 @@ function renderAll() {
   renderMetrics();
   renderComponentRanges();
   renderAlerts();
+  renderNews();
   renderCategories();
   renderProbabilityChart();
   renderSignals();
@@ -837,18 +905,20 @@ function escapeHtml(value) {
 async function loadAll() {
   els.dataStamp.textContent = "Loading data";
   try {
-    const [signals, performance, trust, status, alertSummary] = await Promise.all([
+    const [signals, performance, trust, status, alertSummary, news] = await Promise.all([
       fetchCsv(DATA_PATHS.signals),
       fetchCsv(DATA_PATHS.performance),
       fetchCsv(DATA_PATHS.trust),
       fetchJson(DATA_PATHS.status).catch(() => null),
       fetchJson(DATA_PATHS.alerts).catch(() => null),
+      fetchCsv(DATA_PATHS.news).catch(() => []),
     ]);
     state.signals = normalizeSignals(signals);
     state.performance = performance;
     state.trust = trust;
     state.status = status;
     state.alertSummary = alertSummary;
+    state.news = normalizeNews(news);
     state.selectedId = state.signals[0]?.id || "";
     renderAll();
   } catch (error) {

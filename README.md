@@ -21,6 +21,7 @@ each responsibility separate:
 - `macro_alert_notify.py` sends optional notifications for newly detected alerts.
 - `macro_daily_confirmation.py` adds the temporary daily baseline confirmation.
 - `macro_regime.py` separates release-rule direction from live-market regime.
+- `macro_news_feed.py` fetches and interprets fast Yahoo/TradingView headlines.
 - `dashboard/` displays the current signals, performance, and trust weights.
 
 Older validation tools, broker exports, sample files, duplicate parquet outputs,
@@ -144,16 +145,56 @@ Live-regime override:
   catalyst can be `Release-rule positive` because the actual value beat the
   forecast, while the trade state still blocks longs if the broader tape is
   bearish.
+- The pipeline now rebuilds `macro_live_regime_context.json` from market tape,
+  interpreted news, optional ORB/tape signal files, and optional news-rule
+  context before the trust and daily-confirmation stages.
+- The default fast headline source is Yahoo Finance. The runner writes
+  `macro_news_feed.csv`, `macro_news_feed_summary.json`, and
+  `macro_news_context.json`; the dashboard shows the latest interpreted
+  headlines in the `Interpreted News` panel.
 - Create a local `macro_regime_context.json` when fresh news or price action is
-  overriding the normal release rule. This file is ignored by Git so it can be
+  overriding the generated rules. This file is ignored by Git so it can be
   changed during the session without polluting commits. Use
-  `macro_regime_context.example.json` as the template.
-- The runner passes this file through `--regime-context` to the trust and daily
-  confirmation stages. The dashboard then shows `Release Rule`, `Live Regime`,
-  `Trade State`, and conflict warnings instead of calling a bearish tape
-  `market_positive` just because the release value was positive.
+  `macro_regime_context.example.json` as the manual template.
+- Use `macro_news_context.example.json` and `macro_tape_signals.example.json` as
+  templates for generated news/tape inputs. The HIGHSTRIKE ORB Pine alert text
+  is parsed as bullish/bearish when written into `macro_tape_signals.json` or
+  `macro_tape_signals.csv`.
+- The runner passes the manual context through `--regime-context` and the
+  generated context through `--generated-regime-context`. Manual context wins
+  when present and not expired; otherwise the generated context drives the live
+  regime. The dashboard then shows `Release Rule`, `Live Regime`, `Trade State`,
+  and conflict warnings instead of calling a bearish tape `market_positive` just
+  because the release value was positive.
 - Set `valid_until` in the context JSON. After it expires, the pipeline falls
   back to the inferred regime from the current release set.
+
+Dashboard asset cache:
+
+- After changing `dashboard/app.js` or `dashboard/styles.css`, run:
+
+```powershell
+python .\tools\update_dashboard_asset_versions.py --write
+```
+
+- Before committing or restarting the dashboard, verify:
+
+```powershell
+python .\tools\update_dashboard_asset_versions.py --check
+```
+
+The tool keeps `dashboard/index.html` pointed at hashed CSS/JS URLs so the
+browser does not mix old JavaScript with new HTML.
+
+Manual news refresh:
+
+```powershell
+python .\macro_news_feed.py --provider yahoo --force
+python .\macro_live_regime_builder.py
+```
+
+Use `--provider auto` to try Yahoo first and then TradingView if Yahoo does not
+return usable headlines.
 
 Stop the background processes when needed:
 
@@ -508,6 +549,10 @@ python .\macro_pipeline_runner.py --run-forever --watch-releases --loop-seconds 
 Optional switches:
 
 - `--market-preset intraday` refreshes Yahoo data before the live cycle.
+- `--news-feed-provider yahoo` fetches and interprets Yahoo Finance headlines
+  before the live-regime context is built. Use `auto` to try Yahoo first and
+  then TradingView.
+- `--skip-news-feed` disables the interpreted headline fetch.
 - `--refresh-performance` rebuilds signal grades and performance summaries when
   reaction files are already current.
 - `--refresh-quality` rebuilds the market-data quality report.
@@ -521,7 +566,7 @@ Optional switches:
 - `--emit-initial-alerts` logs new-signal alerts on the first alert snapshot.
 - `--notify-alerts` sends newly detected alerts after each runner cycle.
 - `--notify-targets console,bell` chooses delivery targets. Available targets
-  are `console`, `bell`, `webhook`, `email`, and `risk_lock`.
+  are `console`, `bell`, `popup`, `webhook`, `email`, and `risk_lock`.
 - `--dry-run` prints the stage commands without executing them.
 - `--stop-on-error` exits a forever run after a failed cycle.
 
@@ -565,10 +610,16 @@ Send notifications for alerts:
 python .\macro_alert_notify.py --targets console,bell --min-severity medium
 ```
 
+The notifier can also read `macro_alert_notify_config.json`. The committed
+`macro_alert_notify_config.example.json` shows webhook, email, and risk-lock
+settings. The local config is ignored by Git so private webhook URLs and SMTP
+details stay on the machine. A safe local default is `risk_lock,popup`, which
+writes `macro_alert_risk_lock.json` and shows a Windows desktop popup.
+
 Run the 24/7 loop with local notification output:
 
 ```powershell
-python .\macro_pipeline_runner.py --run-forever --watch-releases --notify-alerts --notify-targets console,bell
+python .\macro_pipeline_runner.py --run-forever --watch-releases --notify-alerts
 ```
 
 Optional delivery examples:
@@ -581,6 +632,7 @@ $env:MACRO_ALERT_SMTP_PASSWORD = "YOUR_SMTP_PASSWORD"
 python .\macro_alert_notify.py --targets email --email-to you@example.com --email-from bot@example.com --smtp-host smtp.example.com --smtp-user bot@example.com
 
 python .\macro_alert_notify.py --targets risk_lock --risk-lock-output macro_alert_risk_lock.json
+python .\macro_alert_notify.py --targets popup --min-severity medium
 ```
 
 Notifier outputs are also local runtime files and ignored by Git:
@@ -677,8 +729,12 @@ Those files are kept for reference, not deleted.
 | `macro_reaction_study.py` | Historical event-to-price reaction study and live-release calibration. |
 | `macro_daily_source_compare.py` | Daily source-to-source reaction comparison report. |
 | `macro_daily_confirmation.py` | Temporary daily baseline confirmation layer for current live signals. |
+| `macro_news_feed.py` | Fast Yahoo/TradingView headline fetcher and interpreter. |
+| `macro_live_regime_builder.py` | Generated market-tape/news live-regime context builder. |
 | `macro_regime.py` | Release-rule versus live-regime conflict layer and trade-state labeling. |
 | `macro_regime_context.example.json` | Template for a local manual/news regime override. |
+| `macro_news_context.example.json` | Template for rule-based news context input. |
+| `macro_tape_signals.example.json` | Template for ORB/tape signal input from TradingView alerts. |
 | `macro_signal_performance.py` | Post-release prediction grading and performance summaries. |
 | `macro_signal_trust.py` | Performance feedback layer for trust-adjusted live probabilities. |
 | `macro_data_quality.py` | Market-data health, gap, OHLC, and release-coverage report. |
@@ -687,12 +743,15 @@ Those files are kept for reference, not deleted.
 | `macro_pipeline_runner.py` | 24/7 orchestration layer that calls the separate modules in order. |
 | `macro_pipeline_alerts.py` | Separate local alert detector for release changes and runner health. |
 | `macro_alert_notify.py` | Optional notification sender for alert summaries/history. |
+| `macro_alert_notify_config.example.json` | Template for webhook/email/risk-lock notification settings. |
 | `dashboard/index.html` | Local browser dashboard for adjusted macro signals. |
 | `dashboard/app.js` | CSV loader, filters, tables, and detail panel for the dashboard. |
 | `dashboard/styles.css` | Dashboard visual system and responsive layout. |
 | `macro_live_signal.csv` | Compact UI-ready live signal contract. |
 | `macro_live_signal_adjusted.csv` | Trust-adjusted live signal contract. |
 | `macro_live_signal_current.csv` | Current dashboard signal contract with daily confirmation applied. |
+| `macro_news_feed.csv` | Runtime interpreted headline feed loaded by the dashboard. |
+| `macro_news_feed_summary.json` | Latest news-fetch counts, titles, and fetch warnings. |
 | `macro_reaction_profiles_5m.csv` | Smoothed historical reaction probabilities. |
 | `macro_reaction_profiles_60m.csv` | Deeper 2024-2026 hourly reaction probabilities. |
 | `macro_reaction_profiles_dabento_full_1m.csv` | Active full-range 1m Dabento calibration profile. |

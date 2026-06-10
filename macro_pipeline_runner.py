@@ -287,6 +287,64 @@ def build_stages(args: argparse.Namespace) -> list[Stage]:
             )
         )
 
+    if not args.skip_news_feed:
+        stages.append(
+            Stage(
+                name="news_feed",
+                command=python_cmd(args, "macro_news_feed.py")
+                + [
+                    "--provider",
+                    args.news_feed_provider,
+                    "--symbols",
+                    args.news_feed_symbols,
+                    "--max-per-symbol",
+                    str(args.news_feed_max_per_symbol),
+                    "--max-items",
+                    str(args.news_feed_max_items),
+                    "--lookback-hours",
+                    str(args.news_feed_lookback_hours),
+                    "--cache-minutes",
+                    str(args.news_feed_cache_minutes),
+                    "--output",
+                    args.news_feed_output,
+                    "--context-output",
+                    args.news_regime_context,
+                    "--summary-output",
+                    args.news_feed_summary_output,
+                ],
+                required_inputs=[],
+                expected_outputs=[args.news_feed_output, args.news_regime_context, args.news_feed_summary_output],
+            )
+        )
+
+    if not args.skip_live_regime_context:
+        stages.append(
+            Stage(
+                name="live_regime_context",
+                command=python_cmd(args, "macro_live_regime_builder.py")
+                + [
+                    "--market-config",
+                    args.market_data_config,
+                    "--market-data",
+                    args.active_market_data_file,
+                    "--news-summary",
+                    args.news_output,
+                    "--news-context",
+                    args.news_regime_context,
+                    "--news-feed",
+                    args.news_feed_output,
+                    "--tape-signal-files",
+                    *args.tape_signal_files,
+                    "--output",
+                    args.generated_regime_context,
+                    "--context-valid-minutes",
+                    str(args.regime_context_valid_minutes),
+                ],
+                required_inputs=[],
+                expected_outputs=[args.generated_regime_context],
+            )
+        )
+
     if not args.skip_trust:
         stages.append(
             Stage(
@@ -303,6 +361,8 @@ def build_stages(args: argparse.Namespace) -> list[Stage]:
                     args.adjusted_signal_output,
                     "--regime-context",
                     args.regime_context,
+                    "--generated-regime-context",
+                    args.generated_regime_context,
                 ],
                 required_inputs=[args.live_signal_output, args.performance_output],
                 expected_outputs=[args.trust_weights_output, args.adjusted_signal_output],
@@ -327,6 +387,8 @@ def build_stages(args: argparse.Namespace) -> list[Stage]:
                     args.daily_confirmation_source_label,
                     "--regime-context",
                     args.regime_context,
+                    "--generated-regime-context",
+                    args.generated_regime_context,
                 ],
                 required_inputs=[args.adjusted_signal_output, args.daily_confirmation_profiles],
                 expected_outputs=[args.current_signal_output, args.daily_confirmation_report_output],
@@ -389,6 +451,8 @@ def run_alert_notifier(args: argparse.Namespace, root: Path, log_file: Path | No
         return
 
     command = python_cmd(args, "macro_alert_notify.py") + [
+        "--config",
+        args.alert_notify_config,
         "--summary",
         args.alert_summary_output,
         "--alerts-csv",
@@ -397,15 +461,15 @@ def run_alert_notifier(args: argparse.Namespace, root: Path, log_file: Path | No
         args.alert_notify_state_output,
         "--status-output",
         args.alert_notify_status_output,
-        "--targets",
-        args.notify_targets,
-        "--min-severity",
-        args.alert_notify_min_severity,
-        "--risk-lock-output",
-        args.alert_risk_lock_output,
-        "--risk-lock-severity",
-        args.alert_risk_lock_severity,
     ]
+    if args.notify_targets:
+        command += ["--targets", args.notify_targets]
+    if args.alert_notify_min_severity:
+        command += ["--min-severity", args.alert_notify_min_severity]
+    if args.alert_risk_lock_output:
+        command += ["--risk-lock-output", args.alert_risk_lock_output]
+    if args.alert_risk_lock_severity:
+        command += ["--risk-lock-severity", args.alert_risk_lock_severity]
     if args.alert_notify_scan_history:
         command.append("--scan-history")
     if args.alert_webhook_url:
@@ -467,6 +531,8 @@ def run_cycle(args: argparse.Namespace, root: Path, cycle: int) -> bool:
         "market_config": args.market_config_summary,
         "active_market_data_file": args.active_market_data_file,
         "regime_context": args.regime_context,
+        "generated_regime_context": args.generated_regime_context,
+        "news_feed_output": args.news_feed_output,
     }
 
     log(f"Pipeline cycle {cycle} starting with {len(stages)} stage(s)", log_file)
@@ -515,10 +581,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--alert-confidence-jump-threshold", type=float, default=0.15)
     p.add_argument("--emit-initial-alerts", action="store_true", help="Emit new-signal alerts on the first alert detector snapshot")
     p.add_argument("--notify-alerts", action="store_true", help="Run the separate alert notifier after alert detection")
-    p.add_argument("--notify-targets", default="console", help="Comma-separated: console,bell,webhook,email,risk_lock")
+    p.add_argument("--alert-notify-config", default="macro_alert_notify_config.json", help="Optional notification config JSON")
+    p.add_argument("--notify-targets", default="", help="Comma-separated: console,bell,popup,webhook,email,risk_lock. Empty uses notifier config/default.")
     p.add_argument("--alert-notify-state-output", default="macro_alert_notify_state.json")
     p.add_argument("--alert-notify-status-output", default="macro_alert_notify_status.json")
-    p.add_argument("--alert-notify-min-severity", choices=["info", "medium", "high"], default="info")
+    p.add_argument("--alert-notify-min-severity", choices=["info", "medium", "high"], default="")
     p.add_argument("--alert-notify-scan-history", action="store_true")
     p.add_argument("--alert-webhook-url", default="")
     p.add_argument("--alert-email-to", default="")
@@ -529,8 +596,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--alert-smtp-user", default="")
     p.add_argument("--alert-smtp-password-env", default="MACRO_ALERT_SMTP_PASSWORD")
     p.add_argument("--alert-smtp-no-starttls", action="store_true")
-    p.add_argument("--alert-risk-lock-output", default="macro_alert_risk_lock.json")
-    p.add_argument("--alert-risk-lock-severity", choices=["medium", "high"], default="high")
+    p.add_argument("--alert-risk-lock-output", default="")
+    p.add_argument("--alert-risk-lock-severity", choices=["medium", "high"], default="")
 
     p.add_argument("--market-preset", choices=["config", "none", "daily", "intraday", "intraday-deep"], default="config")
     p.add_argument("--market-ticker", default="", help="Ticker override for market-data refresh")
@@ -567,6 +634,20 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--grades-output", default="macro_signal_grades.csv")
     p.add_argument("--performance-output", default="macro_signal_performance.csv")
     p.add_argument("--regime-context", default="macro_regime_context.json", help="Optional manual/news regime context JSON")
+    p.add_argument("--generated-regime-context", default="macro_live_regime_context.json", help="Generated tape/news regime context JSON")
+    p.add_argument("--skip-live-regime-context", action="store_true", help="Do not rebuild the generated tape/news regime context")
+    p.add_argument("--news-regime-context", default="macro_news_context.json", help="Optional rule-based news regime context JSON")
+    p.add_argument("--skip-news-feed", action="store_true", help="Do not fetch/interpret market news before regime generation")
+    p.add_argument("--news-feed-provider", choices=["yahoo", "tradingview", "auto"], default="yahoo")
+    p.add_argument("--news-feed-symbols", default="NQ=F,QQQ,SPY,^NDX,^IXIC,NVDA,AMD,SMH")
+    p.add_argument("--news-feed-max-per-symbol", type=int, default=8)
+    p.add_argument("--news-feed-max-items", type=int, default=40)
+    p.add_argument("--news-feed-lookback-hours", type=float, default=12.0)
+    p.add_argument("--news-feed-cache-minutes", type=int, default=10)
+    p.add_argument("--news-feed-output", default="macro_news_feed.csv")
+    p.add_argument("--news-feed-summary-output", default="macro_news_feed_summary.json")
+    p.add_argument("--tape-signal-files", nargs="*", default=["macro_tape_signals.json", "macro_tape_signals.csv"], help="Optional tape/ORB signal JSON or CSV files")
+    p.add_argument("--regime-context-valid-minutes", type=int, default=45)
     p.add_argument("--data-quality-report-output", default="macro_data_quality_report.json")
     p.add_argument("--data-quality-summary-output", default="macro_data_quality_summary.csv")
     p.add_argument("--timing-audit-rows-output", default="macro_timing_audit.csv")

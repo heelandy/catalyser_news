@@ -1,0 +1,30 @@
+{
+  "targets": "risk_lock,popup",
+  "min_severity": "medium",
+  "risk_lock": {
+    "output": "macro_alert_risk_lock.json",
+    "severity": "medium"
+  },
+  "popup": {
+    "title": "NQ Macro Catalyst",
+    "seconds": 12,
+    "max_chars": 500
+  },
+  "webhook": {
+    "url": "",
+    "timeout": 10
+  },
+  "email": {
+    "to": "",
+    "from": "",
+    "subject": "NQ macro catalyst alert"
+  },
+  "smtp": {
+    "host": "",
+    "port": 587,
+    "timeout": 20,
+    "user": "",
+    "password_env": "MACRO_ALERT_SMTP_PASSWORD",
+    "starttls": true
+  }
+}

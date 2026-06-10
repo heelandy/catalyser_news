@@ -1,0 +1,21 @@
+{
+  "items": [
+    {
+      "valid_until": "2026-06-09T18:00:00-04:00",
+      "source": "operator_news_rules",
+      "headline": "Hot NFP and chip selloff are pressuring growth names",
+      "direction": "bearish",
+      "confidence": 0.70,
+      "reason": "Hot labor data plus hawkish rate pressure and semiconductor selloff are risk-off for NQ."
+    }
+  ]
+}
+*** Add File: macro_alert_notify_config.json
+{
+  "targets": "risk_lock",
+  "min_severity": "medium",
+  "risk_lock": {
+    "output": "macro_alert_risk_lock.json",
+    "severity": "medium"
+  }
+}

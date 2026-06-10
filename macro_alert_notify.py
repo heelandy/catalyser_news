@@ -17,6 +17,7 @@ import json
 import os
 import smtplib
 import ssl
+import subprocess
 import sys
 from email.message import EmailMessage
 from pathlib import Path
@@ -25,6 +26,10 @@ from typing import Any
 
 SEVERITY_RANK = {"info": 1, "medium": 2, "high": 3}
 DEFAULT_TARGETS = "console"
+
+
+def option_present(argv: list[str], *names: str) -> bool:
+    return any(arg == name or arg.startswith(f"{name}=") for arg in argv for name in names)
 
 
 def now_iso() -> str:
@@ -65,6 +70,90 @@ def normalize_target(value: str) -> str:
 def parse_targets(value: str) -> list[str]:
     targets = [normalize_target(part) for part in value.split(",") if part.strip()]
     return targets or ["console"]
+
+
+def config_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return text_value(value).lower() in {"1", "true", "yes", "on"}
+
+
+def apply_config(args: argparse.Namespace, argv: list[str]) -> argparse.Namespace:
+    config_path = Path(args.config) if args.config else None
+    config = load_json(config_path) if config_path else {}
+    if not isinstance(config, dict) or not config:
+        return args
+
+    flat: dict[str, Any] = {}
+    flat.update(config)
+    webhook = config.get("webhook") if isinstance(config.get("webhook"), dict) else {}
+    email = config.get("email") if isinstance(config.get("email"), dict) else {}
+    smtp = config.get("smtp") if isinstance(config.get("smtp"), dict) else {}
+    risk_lock = config.get("risk_lock") if isinstance(config.get("risk_lock"), dict) else {}
+    popup = config.get("popup") if isinstance(config.get("popup"), dict) else {}
+
+    nested_map = {
+        "webhook_url": webhook.get("url"),
+        "webhook_timeout": webhook.get("timeout"),
+        "email_to": email.get("to"),
+        "email_from": email.get("from"),
+        "email_subject": email.get("subject"),
+        "smtp_host": smtp.get("host"),
+        "smtp_port": smtp.get("port"),
+        "smtp_timeout": smtp.get("timeout"),
+        "smtp_user": smtp.get("user"),
+        "smtp_password_env": smtp.get("password_env"),
+        "smtp_starttls": smtp.get("starttls"),
+        "risk_lock_output": risk_lock.get("output"),
+        "risk_lock_severity": risk_lock.get("severity"),
+        "popup_title": popup.get("title"),
+        "popup_seconds": popup.get("seconds"),
+        "popup_max_chars": popup.get("max_chars"),
+    }
+    for key, value in nested_map.items():
+        if value is not None:
+            flat[key] = value
+
+    option_names = {
+        "targets": ("--targets",),
+        "min_severity": ("--min-severity",),
+        "scan_history": ("--scan-history",),
+        "webhook_url": ("--webhook-url",),
+        "webhook_timeout": ("--webhook-timeout",),
+        "email_to": ("--email-to",),
+        "email_from": ("--email-from",),
+        "email_subject": ("--email-subject",),
+        "smtp_host": ("--smtp-host",),
+        "smtp_port": ("--smtp-port",),
+        "smtp_timeout": ("--smtp-timeout",),
+        "smtp_user": ("--smtp-user",),
+        "smtp_password_env": ("--smtp-password-env",),
+        "smtp_starttls": ("--smtp-starttls", "--no-smtp-starttls"),
+        "risk_lock_output": ("--risk-lock-output",),
+        "risk_lock_severity": ("--risk-lock-severity",),
+        "popup_title": ("--popup-title",),
+        "popup_seconds": ("--popup-seconds",),
+        "popup_max_chars": ("--popup-max-chars",),
+    }
+    int_fields = {"webhook_timeout", "smtp_port", "smtp_timeout", "popup_seconds", "popup_max_chars"}
+    bool_fields = {"scan_history", "smtp_starttls"}
+
+    for field, names in option_names.items():
+        if field not in flat or option_present(argv, *names):
+            continue
+        value = flat[field]
+        if value is None or value == "":
+            continue
+        if field in int_fields:
+            value = int(value)
+        elif field in bool_fields:
+            value = config_bool(value)
+        setattr(args, field, value)
+    return args
+
+
+def text_value(value: Any) -> str:
+    return str(value if value is not None else "").strip()
 
 
 def severity_value(value: str) -> int:
@@ -186,6 +275,66 @@ def risk_lock_notify(alerts: list[dict[str, Any]], args: argparse.Namespace) -> 
     write_json(Path(args.risk_lock_output), payload)
 
 
+def popup_text(alerts: list[dict[str, Any]], max_chars: int) -> str:
+    if not alerts:
+        return ""
+    text = format_alert(alerts[0])
+    if len(alerts) > 1:
+        text += f"\n\nPlus {len(alerts) - 1} more alert(s)."
+    if len(text) > max_chars:
+        text = text[: max(0, max_chars - 3)].rstrip() + "..."
+    return text
+
+
+def popup_notify(alerts: list[dict[str, Any]], args: argparse.Namespace) -> None:
+    if not alerts:
+        return
+    if os.name != "nt":
+        console_notify(alerts)
+        return
+
+    title = clean(args.popup_title, "NQ Macro Catalyst")
+    text = popup_text(alerts, args.popup_max_chars)
+    seconds = max(3, int(args.popup_seconds))
+    ms = seconds * 1000
+
+    # NotifyIcon is standard Windows/.NET and avoids extra Python packages.
+    title = title.replace("'@", "' @")
+    text = text.replace("'@", "' @")
+    script = f"""
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+$notify = New-Object System.Windows.Forms.NotifyIcon
+$notify.Icon = [System.Drawing.SystemIcons]::Information
+$notify.BalloonTipTitle = @'
+{title}
+'@
+$notify.BalloonTipText = @'
+{text}
+'@
+$notify.Visible = $true
+$notify.ShowBalloonTip({ms})
+Start-Sleep -Seconds {seconds}
+$notify.Dispose()
+"""
+    creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    subprocess.Popen(
+        [
+            "powershell.exe",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-WindowStyle",
+            "Hidden",
+            "-Command",
+            script,
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        creationflags=creationflags,
+    )
+
+
 def send_to_targets(alerts: list[dict[str, Any]], targets: list[str], args: argparse.Namespace) -> list[str]:
     errors: list[str] = []
     for target in targets:
@@ -200,6 +349,8 @@ def send_to_targets(alerts: list[dict[str, Any]], targets: list[str], args: argp
                 email_notify(alerts, args)
             elif target == "risk_lock":
                 risk_lock_notify(alerts, args)
+            elif target == "popup":
+                popup_notify(alerts, args)
             else:
                 raise RuntimeError(f"unknown notify target: {target}")
         except Exception as exc:
@@ -209,11 +360,12 @@ def send_to_targets(alerts: list[dict[str, Any]], targets: list[str], args: argp
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Send configured notifications for new macro pipeline alerts.")
+    p.add_argument("--config", default="macro_alert_notify_config.json", help="Optional notification config JSON")
     p.add_argument("--summary", default="macro_pipeline_alert_summary.json")
     p.add_argument("--alerts-csv", default="macro_pipeline_alerts.csv")
     p.add_argument("--state", default="macro_alert_notify_state.json")
     p.add_argument("--status-output", default="macro_alert_notify_status.json")
-    p.add_argument("--targets", default=DEFAULT_TARGETS, help="Comma-separated: console,bell,webhook,email,risk_lock")
+    p.add_argument("--targets", default=DEFAULT_TARGETS, help="Comma-separated: console,bell,popup,webhook,email,risk_lock")
     p.add_argument("--min-severity", choices=["info", "medium", "high"], default="info")
     p.add_argument("--scan-history", action="store_true", help="Scan the full alert CSV instead of only the latest summary alerts")
     p.add_argument("--dry-run", action="store_true")
@@ -234,7 +386,12 @@ def parse_args() -> argparse.Namespace:
 
     p.add_argument("--risk-lock-output", default="macro_alert_risk_lock.json")
     p.add_argument("--risk-lock-severity", choices=["medium", "high"], default="high")
-    return p.parse_args()
+
+    p.add_argument("--popup-title", default=os.environ.get("MACRO_ALERT_POPUP_TITLE", "NQ Macro Catalyst"))
+    p.add_argument("--popup-seconds", type=int, default=int(os.environ.get("MACRO_ALERT_POPUP_SECONDS", "12")))
+    p.add_argument("--popup-max-chars", type=int, default=int(os.environ.get("MACRO_ALERT_POPUP_MAX_CHARS", "500")))
+    argv = sys.argv[1:]
+    return apply_config(p.parse_args(argv), argv)
 
 
 def main() -> None:
