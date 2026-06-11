@@ -29,11 +29,14 @@ $psExe = "powershell.exe"
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
 
 $startAction = New-ScheduledTaskAction -Execute $psExe `
-    -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$startScript`" -StopAt $StopTime" `
+    -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$startScript`" -StartAt $StartTime -StopAt $StopTime" `
     -WorkingDirectory $root
-$startTrigger = New-ScheduledTaskTrigger -Daily -At $StartTime
-Register-ScheduledTask -TaskName $startTaskName -Action $startAction -Trigger $startTrigger -Settings $settings -Force | Out-Null
-Write-Output "Registered: $startTaskName (daily at $StartTime; also catches up if the PC was off)"
+$startTriggers = @(
+    (New-ScheduledTaskTrigger -Daily -At $StartTime),
+    (New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\$env:USERNAME")
+)
+Register-ScheduledTask -TaskName $startTaskName -Action $startAction -Trigger $startTriggers -Settings $settings -Force | Out-Null
+Write-Output "Registered: $startTaskName (daily at $StartTime, and at every logon so the dashboard survives reboots)"
 
 $stopAction = New-ScheduledTaskAction -Execute $psExe `
     -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$stopScript`"" `

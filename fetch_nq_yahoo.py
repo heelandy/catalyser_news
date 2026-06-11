@@ -74,7 +74,7 @@ def make_start_date(today: date, years: int) -> date:
 
 def default_output_name(ticker: str, interval: str, period: str | None) -> str:
     period_part = period or "custom"
-    return f"{safe_ticker_name(ticker)}_{interval}_{period_part}.csv"
+    return f"data/{safe_ticker_name(ticker)}_{interval}_{period_part}.csv"
 
 
 def intraday_preset_output_name(ticker: str, interval: str) -> str:
@@ -86,8 +86,8 @@ def intraday_preset_output_name(ticker: str, interval: str) -> str:
             "60m": "60min",
             "1h": "1h",
         }.get(interval, interval)
-        return f"NQ_{label}_data.csv"
-    return f"{safe_ticker_name(ticker)}_{interval}_data.csv"
+        return f"data/NQ_{label}_data.csv"
+    return f"data/{safe_ticker_name(ticker)}_{interval}_data.csv"
 
 
 def default_period(interval: str) -> str:
@@ -208,9 +208,9 @@ def build_jobs(args: argparse.Namespace) -> list[DownloadJob]:
                 period=None,
                 start_date=start,
                 end_date=end,
-                out_csv="NQ_F_daily.csv",
-                out_clean="NQ_F_daily_clean.csv",
-                out_parquet="NQ_F_daily.parquet",
+                out_csv="data/NQ_F_daily.csv",
+                out_clean="data/NQ_F_daily_clean.csv",
+                out_parquet="data/NQ_F_daily.parquet",
             )
         ]
 

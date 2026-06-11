@@ -35,6 +35,7 @@ const state = {
   newsSummary: null,
   status: null,
   alertSummary: null,
+  visibleAlerts: [],
   activeTab: "signals",
   selectedId: "",
   sortKey: "release_time",
@@ -447,6 +448,7 @@ function renderComponentRanges() {
 function renderAlerts() {
   const summary = state.alertSummary || {};
   const alerts = Array.isArray(summary.latest_alerts) ? summary.latest_alerts.slice(-5).reverse() : [];
+  state.visibleAlerts = alerts;
   if (!alerts.length) {
     els.alertPanel.classList.remove("active");
     els.alertPanel.innerHTML = "";
@@ -458,28 +460,39 @@ function renderAlerts() {
   els.alertPanel.innerHTML = `
     <div class="alert-head">
       <h2>Latest Alerts</h2>
-      <span>${alerts.length} shown${checkedAt ? `, checked ${escapeHtml(checkedAt)}` : ""}</span>
+      <span>${alerts.length} shown${checkedAt ? `, checked ${escapeHtml(checkedAt)}` : ""}, click an alert for details</span>
     </div>
     <div class="alert-list">
-      ${alerts.map((alert) => {
+      ${alerts.map((alert, index) => {
         const severity = clean(alert.severity, "info").toLowerCase();
         const label = ["high", "medium", "info"].includes(severity) ? severity : "info";
         const title = clean(alert.title || alert.alert_type, "Pipeline Alert");
         const message = clean(alert.message, "");
         const time = formatTime(alert.release_time || alert.alert_time);
         return `
-          <div class="alert-item">
+          <button class="alert-item" type="button" data-alert-index="${index}">
             <span class="alert-severity ${escapeHtml(label)}">${escapeHtml(label)}</span>
-            <div>
+            <span class="alert-copy">
               <strong title="${escapeHtml(title)}">${escapeHtml(title)}</strong>
               <span title="${escapeHtml(message)}">${escapeHtml(message)}</span>
-            </div>
+            </span>
             <em>${escapeHtml(time)}</em>
-          </div>
+          </button>
         `;
       }).join("")}
     </div>
   `;
+}
+
+function openAlertDetails(alert) {
+  const row = state.signals.find((item) => clean(item.title, "") === clean(alert.title, ""));
+  if (row) {
+    state.selectedId = row.id;
+    setActiveTab("signals");
+    renderSignals();
+  }
+  popupState.queue.unshift(alert);
+  showNextAlertPopup();
 }
 
 const ALERT_SEEN_KEY = "nqCatalystSeenAlerts";
@@ -1229,6 +1242,17 @@ function setActiveTab(tab) {
 function bindEvents() {
   els.reloadBtn.addEventListener("click", loadAll);
 
+  els.alertPanel.addEventListener("click", (event) => {
+    const item = event.target.closest("[data-alert-index]");
+    if (!item) {
+      return;
+    }
+    const alert = (state.visibleAlerts || [])[Number(item.dataset.alertIndex)];
+    if (alert) {
+      openAlertDetails(alert);
+    }
+  });
+
   els.tabs.forEach((button) => {
     button.addEventListener("click", () => setActiveTab(button.dataset.tab));
   });
@@ -1261,6 +1285,9 @@ function bindEvents() {
     }
     state.selectedId = row.dataset.id;
     renderSignals();
+    if (window.matchMedia("(max-width: 1100px)").matches) {
+      els.detailPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
   });
 
   els.sortableHeaders.forEach((header) => {

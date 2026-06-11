@@ -30,10 +30,10 @@ DEFAULT_OUTPUT_DIR = "market_data_backfills"
 
 DEFAULT_FILES = {
     "1m": "NQ_1min_data.csv",
-    "5m": "NQ_5min_data.csv",
+    "5m": "data/NQ_5min_data.csv",
     "15m": "NQ_15min_data.csv",
     "60m": "NQ_60min_data.csv",
-    "1d": "NQ_F_daily.csv",
+    "1d": "data/NQ_F_daily.csv",
 }
 
 YAHOO_INTRADAY_MAX_DAYS = {

@@ -124,7 +124,7 @@ def audit_summary(rows: pd.DataFrame, bars: pd.DataFrame, market_data: str, even
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Audit release-time alignment against market bars.")
-    p.add_argument("--market-data", default="NQ_5min_data.csv")
+    p.add_argument("--market-data", default="data/NQ_5min_data.csv")
     p.add_argument("--events-file", default="macro_releases.csv")
     p.add_argument("--rows-output", default="macro_timing_audit.csv")
     p.add_argument("--summary-output", default="macro_timing_audit_report.json")

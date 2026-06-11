@@ -29,7 +29,7 @@ CANONICAL_COLUMNS = ["date", "open", "high", "low", "close", "adj_close", "volum
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Reconcile a candidate daily futures source against a reference source.")
     p.add_argument("--candidate", required=True, help="Candidate CSV, e.g. Investing.com daily export")
-    p.add_argument("--reference", default="NQ_F_daily.csv", help="Reference daily OHLC CSV")
+    p.add_argument("--reference", default="data/NQ_F_daily.csv", help="Reference daily OHLC CSV")
     p.add_argument("--source-name", default="investing", help="Source label used in report metadata")
     p.add_argument("--date-column", default="Date")
     p.add_argument("--open-column", default="Open")

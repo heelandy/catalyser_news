@@ -1,11 +1,11 @@
 {
   "default_source": "yahoo",
-  "active_market_data_file": "NQ_dabento_full_5min_data.csv",
-  "active_profiles_file": "macro_reaction_profiles_dabento_full_1m.csv",
+  "active_market_data_file": "data/NQ_5min_data.csv",
+  "active_profiles_file": "studies/macro_reaction_profiles_dabento_full_1m.csv",
   "active_reaction_files": [
-    "macro_reactions_dabento_full_1m.csv",
-    "macro_reactions_dabento_full_5m.csv",
-    "macro_reactions_dabento_full_60m.csv"
+    "studies/macro_reactions_dabento_full_1m.csv",
+    "studies/macro_reactions_dabento_full_5m.csv",
+    "studies/macro_reactions_dabento_full_60m.csv"
   ],
   "active_reaction_labels": [
     "dabento_full_1m",
@@ -17,13 +17,13 @@
     "ticker": "NQ=F",
     "preset": "intraday",
     "primary_intraday_interval": "5m",
-    "refresh_on_runner": false,
-    "notes": "Yahoo is the default source until an external futures API/export is added."
+    "refresh_on_runner": true,
+    "notes": "Yahoo 5m refresh keeps the live tape regime current; throttled by --market-refresh-minutes. Dabento files remain the historical study source."
   },
   "daily_confirmation": {
     "enabled": true,
     "source_label": "investing_daily_clean",
-    "profiles_file": "macro_reaction_profiles_investing_daily.csv",
+    "profiles_file": "studies/macro_reaction_profiles_investing_daily.csv",
     "output": "macro_live_signal_current.csv",
     "notes": "Temporary daily baseline confirmation until deeper 1m/5m NQ history is available."
   },
@@ -31,7 +31,7 @@
     "enabled": false,
     "provider": "",
     "api_key_env": "",
-    "normalized_output": "NQ_external_1min_data.csv",
+    "normalized_output": "data/NQ_external_1min_data.csv",
     "notes": "Fill this later when a provider and API key are selected."
   }
 }

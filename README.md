@@ -25,9 +25,27 @@ each responsibility separate:
   optional TradingView headlines.
 - `dashboard/` displays the current signals, performance, and trust weights.
 
-Older validation tools, broker exports, sample files, duplicate parquet outputs,
-and one-off test artifacts are archived under `extra/` so the root stays focused
-on the macro catalyst engine.
+## Folder Layout
+
+The workspace is sorted by use:
+
+- Root — the pipeline modules above plus the live runtime files they rewrite
+  every cycle (`macro_live_signal*.csv`, `macro_releases*.csv`, news/alert
+  outputs, `macro_pipeline_status.json`, configs, logs).
+- `pine/` — TradingView Pine scripts. `HIGHSTRIKE_ORB_OPTIONS.pine` is for
+  SPY/QQQ options; `HIGHSTRIKE_ORB_V1_INDICATOR.pine` is for NQ futures. See
+  `pine/README.md` for how their alerts feed the live regime.
+- `data/` — market OHLC history (Yahoo and Dabento files, roll maps, clean
+  daily candidates). Large vendor files here stay local-only via `.gitignore`.
+- `studies/` — reaction studies built from `data/`: event histories, clusters,
+  reactions, and the reaction profiles the live calibration reads
+  (selected in `market_data_config.json`).
+- `reports/` — one-off verification, reconciliation, backfill, and adapter
+  reports kept for the data-approval record.
+- `dashboard/` — the local dashboard. `tools/` — operational scripts
+  (start/stop/status, schedule setup, asset versions). `tests/` — unit tests.
+- `extra/` — archived older validation tools, broker exports, sample files,
+  and one-off test artifacts.
 
 This is research tooling, not financial advice. Live-market use needs monitoring,
 logging, and broker/risk controls before any automation is connected to orders.
@@ -44,12 +62,19 @@ python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-## Quick Start: Repository To Live Pipeline
+## Quick Start: From GitHub To Running System
 
-Use this sequence when starting from GitHub and ending with the dashboard plus
-the live macro pipeline running in the background.
+Follow these steps in order on a fresh Windows machine. At the end the
+dashboard is live, the pipeline runs every trading day from 7:00 AM to
+6:00 PM ET, and everything survives reboots.
 
-Clone the repository the first time:
+### Step 1 - Install prerequisites
+
+- Python 3.11 or newer from https://www.python.org/downloads/ (check "Add
+  python.exe to PATH" during install).
+- Git from https://git-scm.com/download/win (only needed for cloning).
+
+### Step 2 - Clone the repository
 
 ```powershell
 cd "<parent folder where you keep trading projects>"
@@ -64,94 +89,87 @@ cd "<path to python nq Catalyst>"
 git pull --ff-only
 ```
 
-Create or refresh the Python environment:
+### Step 3 - Install the Python packages
 
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-Restore any private/local market-data files that are intentionally not committed
-to Git. Large vendor files and raw exports are ignored by `.gitignore`, so a
-fresh clone will not include files such as `dabento/`, `NQ_dabento_full_*data.csv`,
-`Dataset_*.csv`, or `NQ_in_*.csv`. The normal live calendar pipeline can run
-from the committed profile and signal files, but quality/performance refreshes
-that reference full market data need those ignored files restored or
-`market_data_config.json` updated.
+(Optional but recommended: create a `.venv` first with `python -m venv .venv`
+and `.\.venv\Scripts\Activate.ps1`.)
 
-Run a dry check before starting the live loop:
-
-```powershell
-python .\macro_pipeline_runner.py --dry-run
-```
-
-Start the dashboard HTTP server from the repository root. Keep this shell open,
-or start it in the background as shown below.
-
-```powershell
-python -m http.server 8787 --bind 127.0.0.1
-```
-
-Open:
-
-```text
-http://127.0.0.1:8787/dashboard/
-```
-
-Optional background dashboard server:
-
-```powershell
-$server = Start-Process -FilePath "python" -ArgumentList @("-m", "http.server", "8787", "--bind", "127.0.0.1") -WorkingDirectory (Get-Location) -WindowStyle Hidden -PassThru
-$server.Id
-```
-
-Start the live pipeline in the background. This is the command that pulls live
-calendar rows, watches for actual values, recalibrates signals, updates the
-dashboard CSVs, and runs the alert detector every cycle.
-
-```powershell
-$runner = Start-Process -FilePath "python" -ArgumentList @(".\macro_pipeline_runner.py", "--run-forever", "--watch-releases", "--loop-seconds", "60") -WorkingDirectory (Get-Location) -WindowStyle Hidden -PassThru
-$runner.Id
-```
-
-Preferred path: use the helper scripts instead of typing the commands above.
-They refuse to start duplicates and accept the daily stop time:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\start_live_pipeline.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\status_live_pipeline.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\stop_live_pipeline.ps1
-```
-
-Daily 7:00-18:00 schedule. Register Windows Task Scheduler tasks once so the
-pipeline starts every day at 7:00 AM, stops at 6:00 PM, and repeats the next
-day instead of running around the clock:
+### Step 4 - Register the daily schedule (one time)
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\setup_schedule.ps1
 ```
 
-- The start task launches `tools\start_live_pipeline.ps1`, which passes
-  `--stop-at 18:00` to the runner so it also exits on its own.
-- The stop task runs `tools\stop_live_pipeline.ps1` at 6:00 PM as a backstop
-  (it also catches a runner stuck inside a release watch window).
-- The dashboard HTTP server keeps running so the last data stays viewable;
-  the dashboard shows a stale-data banner while the runner is outside its
-  window. Use `tools\setup_schedule.ps1 -Remove` to unregister both tasks.
+This registers two Windows Task Scheduler tasks:
 
-Verify that it is running:
+- **NQ Catalyst Pipeline Start** - runs daily at 7:00 AM *and at every
+  logon*, so the dashboard comes back automatically after a reboot. The
+  runner only starts inside the 7:00-18:00 window.
+- **NQ Catalyst Pipeline Stop** - stops the runner at 6:00 PM as a backstop
+  (the runner also exits on its own via `--stop-at 18:00`).
+
+Use `tools\setup_schedule.ps1 -Remove` to unregister both tasks.
+
+### Step 5 - Start everything right now
+
+Double-click `START.bat` in the project folder, or run:
 
 ```powershell
-Get-CimInstance Win32_Process |
-  Where-Object { $_.Name -like "python*" -and $_.CommandLine -match "macro_pipeline_runner.py" } |
-  Select-Object ProcessId, CommandLine
-
-Get-Content .\macro_pipeline_status.json
-Get-Content .\macro_pipeline_runner.log -Tail 80
-Get-Content .\macro_pipeline_alert_summary.json
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\start_live_pipeline.ps1
 ```
+
+This single command starts the hidden dashboard web server and the live
+pipeline runner. It is always safe to run again: it skips anything that is
+already running, and outside the 7:00-18:00 window it starts only the
+dashboard (add `-ForceRunner` to force the runner too).
+
+Do NOT run `python -m http.server` in a terminal yourself - that server dies
+the moment the terminal closes. The start script runs the same server hidden
+in the background instead.
+
+### Step 6 - Open the dashboard
+
+```text
+http://127.0.0.1:8787/dashboard/
+```
+
+The dashboard reloads data every 30 seconds, pops up an alert card when a new
+alert fires, and shows a yellow stale-data banner whenever the pipeline is
+stopped or outside its daily window.
+
+### Step 7 - Verify
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\status_live_pipeline.ps1
+python -m unittest discover -s tests -q
+```
+
+The status script shows whether the runner and dashboard are up, the latest
+`macro_pipeline_status.json`, and the last log lines. To stop things manually:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\stop_live_pipeline.ps1                      # stop the runner
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\stop_live_pipeline.ps1 -IncludeDashboard    # stop everything
+```
+
+### What a fresh clone does and does not include
+
+A fresh clone runs the full live pipeline out of the box: the committed
+`data/NQ_5min_data.csv` (live tape), `studies/` reaction profiles (live
+calibration), and `market_data_config.json` are all in Git, and the runner
+regenerates the runtime files (signals, news, alerts, status) on its first
+cycle.
+
+Not in Git (ignored): the large raw vendor files such as `data/dabento/` and
+`data/NQ_dabento_full_*data.csv`, plus local context overrides like
+`macro_regime_context.json`. The live pipeline does not need them; they are
+only required when rebuilding the historical reaction studies from scratch.
+Restore them from your local backup if you want to re-run those studies.
 
 Operational notes:
 
@@ -166,6 +184,16 @@ Operational notes:
   `--news-feed-refresh-seconds` (default 180) in the background, so headlines
   stay current even while a release watch window blocks the cycle for up to 30
   minutes. The news cache default is 3 minutes (`--news-feed-cache-minutes`).
+  Within `--news-fast-window-minutes` (default 15) of a scheduled release the
+  background refresh tightens to 60 seconds with a 1-minute cache.
+- News interpretation discounts listicle/evergreen headlines
+  (`low_signal_content`), weights publishers (Reuters/Bloomberg above
+  Motley Fool/Insider Monkey), decays the aggregate bias with a 90-minute
+  half-life, and dedupes the same story fetched under different symbols.
+- The runner refreshes Yahoo market data in a throttled, non-fatal stage every
+  `--market-refresh-minutes` (default 5) so the live tape regime component has
+  current bars. `active_market_data_file` points at `data/NQ_5min_data.csv`;
+  the Dabento files remain the historical study source in `studies/`.
 - The dashboard reloads its data every 30 seconds and pops up a styled alert
   card when a new alert (less than 30 minutes old) appears in
   `macro_pipeline_alert_summary.json`. Open
@@ -271,8 +299,8 @@ python .\fetch_nq_yahoo.py --preset intraday
 
 That creates:
 
-- `NQ_1min_data.csv` using Yahoo's 7-day 1-minute window.
-- `NQ_5min_data.csv` using a 60-day 5-minute window when Yahoo allows it.
+- `data/NQ_1min_data.csv` using Yahoo's 7-day 1-minute window.
+- `data/NQ_5min_data.csv` using a 60-day 5-minute window when Yahoo allows it.
 
 For a broader Yahoo pull:
 
@@ -282,14 +310,14 @@ python .\fetch_nq_yahoo.py --preset intraday-deep
 
 That adds:
 
-- `NQ_15min_data.csv`
-- `NQ_60min_data.csv`
+- `data/NQ_15min_data.csv`
+- `data/NQ_60min_data.csv`
 
 Use custom ticker, interval, period, or date ranges when you want a different
 timeframe:
 
 ```powershell
-python .\fetch_nq_yahoo.py --ticker NQ=F --interval 15m --period 60d --out-csv NQ_15min_data.csv
+python .\fetch_nq_yahoo.py --ticker NQ=F --interval 15m --period 60d --out-csv data/NQ_15min_data.csv
 python .\fetch_nq_yahoo.py --ticker ES=F --interval 5m --period 30d --out-csv ES_5min_data.csv
 python .\fetch_nq_yahoo.py --ticker NQ=F --interval 5m --start-date 2026-05-01 --end-date 2026-06-05 --out-csv NQ_custom_5m.csv
 ```
@@ -302,8 +330,8 @@ python .\market_data_backfill.py --desired-start 2020-01-01 --desired-end 2026-0
 
 That writes:
 
-- `market_data_backfill_plan.csv`
-- `market_data_backfill_report.json`
+- `reports/market_data_backfill_plan.csv`
+- `reports/market_data_backfill_report.json`
 
 Use `--execute-yahoo` only for ranges marked `yahoo_eligible`. Ranges marked
 `external_required` need a broker/platform/API export and should then flow
@@ -312,45 +340,45 @@ through `futures_data_adapter.py`.
 Verify a newly added external 1-minute dataset before use:
 
 ```powershell
-python .\market_data_verify.py --input .\extra\local_market_data\raw_exports\Dataset_NQ_1min_2022_2025.csv --datetime-column "timestamp ET" --input-timezone America/New_York --reference-intraday .\NQ_60min_data.csv --reference-daily .\NQ_F_daily.csv --report-output .\market_data_verification_report.json --summary-output .\market_data_verification_summary.csv --canonical-output .\extra\local_market_data\candidates_and_archived_adapter_outputs\NQ_external_1min_2022_2025_candidate.csv
+python .\market_data_verify.py --input .\extra\local_market_data\raw_exports\Dataset_NQ_1min_2022_2025.csv --datetime-column "timestamp ET" --input-timezone America/New_York --reference-intraday .\data/NQ_60min_data.csv --reference-daily .\data/NQ_F_daily.csv --report-output .\reports/market_data_verification_report.json --summary-output .\reports/market_data_verification_summary.csv --canonical-output .\extra\local_market_data\candidates_and_archived_adapter_outputs\NQ_external_1min_2022_2025_candidate.csv
 ```
 
 Verify a TradingView-style export such as `NQ_in_1_hour.csv`:
 
 ```powershell
-python .\market_data_verify.py --input .\extra\local_market_data\raw_exports\NQ_in_1_hour.csv --datetime-column datetime --input-timezone UTC --expected-interval-seconds 3600 --reference-intraday .\NQ_60min_data.csv --reference-daily .\NQ_F_daily.csv --report-output .\market_data_verification_NQ_in_1_hour_report.json --summary-output .\market_data_verification_NQ_in_1_hour_summary.csv
+python .\market_data_verify.py --input .\extra\local_market_data\raw_exports\NQ_in_1_hour.csv --datetime-column datetime --input-timezone UTC --expected-interval-seconds 3600 --reference-intraday .\data/NQ_60min_data.csv --reference-daily .\data/NQ_F_daily.csv --report-output .\reports/market_data_verification_NQ_in_1_hour_report.json --summary-output .\reports/market_data_verification_NQ_in_1_hour_summary.csv
 ```
 
 Do not merge the candidate file into the active model until
-`market_data_verification_report.json` says it is approved for model use.
+`reports/market_data_verification_report.json` says it is approved for model use.
 
 Verify an Investing.com daily export such as
-`Nasdaq 100 Futures Historical Data.csv`:
+`data/Nasdaq 100 Futures Historical Data.csv`:
 
 ```powershell
-python .\market_data_verify.py --input ".\Nasdaq 100 Futures Historical Data.csv" --datetime-column Date --open-column Open --high-column High --low-column Low --close-column Price --volume-column Vol. --input-timezone America/New_York --expected-interval-seconds 86400 --reference-daily .\NQ_F_daily.csv --report-output .\market_data_verification_investing_nq_daily_report.json --summary-output .\market_data_verification_investing_nq_daily_summary.csv
+python .\market_data_verify.py --input ".\data/Nasdaq 100 Futures Historical Data.csv" --datetime-column Date --open-column Open --high-column High --low-column Low --close-column Price --volume-column Vol. --input-timezone America/New_York --expected-interval-seconds 86400 --reference-daily .\data/NQ_F_daily.csv --report-output .\reports/market_data_verification_investing_nq_daily_report.json --summary-output .\reports/market_data_verification_investing_nq_daily_summary.csv
 ```
 
 Reconcile that daily source against Yahoo and create a clean candidate:
 
 ```powershell
-python .\market_data_source_reconcile.py --candidate ".\Nasdaq 100 Futures Historical Data.csv" --reference .\NQ_F_daily.csv --source-name investing --round-to-tick
+python .\market_data_source_reconcile.py --candidate ".\data/Nasdaq 100 Futures Historical Data.csv" --reference .\data/NQ_F_daily.csv --source-name investing --round-to-tick
 ```
 
 Build separate daily reaction profiles and compare them:
 
 ```powershell
-python .\macro_reaction_study.py --events-file .\macro_events_history_2024_2026_high.csv --market-data .\NQ_investing_daily_clean_candidate.csv --symbol NQ_INVESTING_DAILY --cluster-output .\macro_event_clusters_investing_daily.csv --reaction-output .\macro_reactions_investing_daily.csv --profile-output .\macro_reaction_profiles_investing_daily.csv --min-events 3 --daily-max-session-gap-days 0
-python .\macro_reaction_study.py --events-file .\macro_events_history_2024_2026_high.csv --market-data .\NQ_F_daily.csv --symbol NQ_YAHOO_DAILY --cluster-output .\macro_event_clusters_yahoo_daily.csv --reaction-output .\macro_reactions_yahoo_daily.csv --profile-output .\macro_reaction_profiles_yahoo_daily.csv --min-events 3 --daily-max-session-gap-days 0
-python .\macro_daily_source_compare.py --left-reactions .\macro_reactions_yahoo_daily.csv --right-reactions .\macro_reactions_investing_daily.csv --left-name yahoo_daily --right-name investing_daily --neutral-threshold-pts 10
+python .\macro_reaction_study.py --events-file .\studies/macro_events_history_2024_2026_high.csv --market-data .\data/NQ_investing_daily_clean_candidate.csv --symbol NQ_INVESTING_DAILY --cluster-output .\studies/macro_event_clusters_investing_daily.csv --reaction-output .\studies/macro_reactions_investing_daily.csv --profile-output .\studies/macro_reaction_profiles_investing_daily.csv --min-events 3 --daily-max-session-gap-days 0
+python .\macro_reaction_study.py --events-file .\studies/macro_events_history_2024_2026_high.csv --market-data .\data/NQ_F_daily.csv --symbol NQ_YAHOO_DAILY --cluster-output .\studies/macro_event_clusters_yahoo_daily.csv --reaction-output .\studies/macro_reactions_yahoo_daily.csv --profile-output .\studies/macro_reaction_profiles_yahoo_daily.csv --min-events 3 --daily-max-session-gap-days 0
+python .\macro_daily_source_compare.py --left-reactions .\studies/macro_reactions_yahoo_daily.csv --right-reactions .\studies/macro_reactions_investing_daily.csv --left-name yahoo_daily --right-name investing_daily --neutral-threshold-pts 10
 ```
 
 Normalize Dabento NQ OHLCV exports when those files exist locally:
 
 ```powershell
-python .\dabento_nq_adapter.py --input .\dabento\glbx-mdp3-20100606-20260607.ohlcv-1m.csv --source-interval 1m --out-1m .\NQ_dabento_full_1min_data.csv --out-5m .\NQ_dabento_full_5min_data.csv --out-60m .\NQ_dabento_full_60min_data.csv --roll-map-output .\NQ_dabento_full_roll_map.csv --report-output .\dabento_nq_full_adapter_report.json
+python .\dabento_nq_adapter.py --input .\dabento\glbx-mdp3-20100606-20260607.ohlcv-1m.csv --source-interval 1m --out-1m .\data/NQ_dabento_full_1min_data.csv --out-5m .\data/NQ_dabento_full_5min_data.csv --out-60m .\data/NQ_dabento_full_60min_data.csv --roll-map-output .\data/NQ_dabento_full_roll_map.csv --report-output .\reports/dabento_nq_full_adapter_report.json
 python .\dabento_nq_adapter.py --input .\dabento\glbx-mdp3-20200101-20251231.ohlcv-1m.csv --source-interval 1m --out-1m .\extra\local_market_data\candidates_and_archived_adapter_outputs\NQ_dabento_1min_data.csv --out-5m .\extra\local_market_data\candidates_and_archived_adapter_outputs\NQ_dabento_5min_data.csv --out-60m .\extra\local_market_data\candidates_and_archived_adapter_outputs\NQ_dabento_60min_data.csv
-python .\dabento_nq_adapter.py --input .\dabento\1hour_glbx-mdp3-20100606-20260607.ohlcv-1h.csv --source-interval 1h --out-60m .\extra\local_market_data\candidates_and_archived_adapter_outputs\NQ_dabento_60min_long_data.csv --roll-map-output .\NQ_dabento_60min_long_roll_map.csv --report-output .\dabento_nq_60min_long_adapter_report.json
+python .\dabento_nq_adapter.py --input .\dabento\1hour_glbx-mdp3-20100606-20260607.ohlcv-1h.csv --source-interval 1h --out-60m .\extra\local_market_data\candidates_and_archived_adapter_outputs\NQ_dabento_60min_long_data.csv --roll-map-output .\data/NQ_dabento_60min_long_roll_map.csv --report-output .\reports/dabento_nq_60min_long_adapter_report.json
 ```
 
 The full-range 1-minute Dabento file creates canonical 1m, derived 5m, and
@@ -360,9 +388,9 @@ source for the 60m output.
 Build Dabento reaction profiles the same way as Yahoo or Investing.com:
 
 ```powershell
-python .\macro_reaction_study.py --events-file .\macro_events_history_2024_2026_high.csv --market-data .\NQ_dabento_full_1min_data.csv --symbol NQ_DABENTO_FULL_1M --cluster-output .\macro_event_clusters_dabento_full_1m.csv --reaction-output .\macro_reactions_dabento_full_1m.csv --profile-output .\macro_reaction_profiles_dabento_full_1m.csv --min-events 3
-python .\macro_reaction_study.py --events-file .\macro_events_history_2024_2026_high.csv --market-data .\NQ_dabento_full_5min_data.csv --symbol NQ_DABENTO_FULL_5M --cluster-output .\macro_event_clusters_dabento_full_5m.csv --reaction-output .\macro_reactions_dabento_full_5m.csv --profile-output .\macro_reaction_profiles_dabento_full_5m.csv --min-events 3
-python .\macro_reaction_study.py --events-file .\macro_events_history_2024_2026_high.csv --market-data .\NQ_dabento_full_60min_data.csv --symbol NQ_DABENTO_FULL_60M --cluster-output .\macro_event_clusters_dabento_full_60m.csv --reaction-output .\macro_reactions_dabento_full_60m.csv --profile-output .\macro_reaction_profiles_dabento_full_60m.csv --min-events 3
+python .\macro_reaction_study.py --events-file .\studies/macro_events_history_2024_2026_high.csv --market-data .\data/NQ_dabento_full_1min_data.csv --symbol NQ_DABENTO_FULL_1M --cluster-output .\studies/macro_event_clusters_dabento_full_1m.csv --reaction-output .\studies/macro_reactions_dabento_full_1m.csv --profile-output .\studies/macro_reaction_profiles_dabento_full_1m.csv --min-events 3
+python .\macro_reaction_study.py --events-file .\studies/macro_events_history_2024_2026_high.csv --market-data .\data/NQ_dabento_full_5min_data.csv --symbol NQ_DABENTO_FULL_5M --cluster-output .\studies/macro_event_clusters_dabento_full_5m.csv --reaction-output .\studies/macro_reactions_dabento_full_5m.csv --profile-output .\studies/macro_reaction_profiles_dabento_full_5m.csv --min-events 3
+python .\macro_reaction_study.py --events-file .\studies/macro_events_history_2024_2026_high.csv --market-data .\data/NQ_dabento_full_60min_data.csv --symbol NQ_DABENTO_FULL_60M --cluster-output .\studies/macro_event_clusters_dabento_full_60m.csv --reaction-output .\studies/macro_reactions_dabento_full_60m.csv --profile-output .\studies/macro_reaction_profiles_dabento_full_60m.csv --min-events 3
 ```
 
 The default command still preserves the older daily NQ files:
@@ -382,16 +410,16 @@ It keeps Yahoo available as the default fetcher with `NQ=F`, leaves
 the verified Dabento artifacts now present in this workspace.
 
 The active live calibration profile is currently
-`macro_reaction_profiles_dabento_full_1m.csv`. Performance grading uses the
+`studies/macro_reaction_profiles_dabento_full_1m.csv`. Performance grading uses the
 full Dabento 1m, derived 5m, and derived 60m reaction files. Data-quality and
-timing checks use `NQ_dabento_full_5min_data.csv`.
+timing checks use `data/NQ_dabento_full_5min_data.csv`.
 
 When Yahoo's intraday limit is not enough, export deeper futures data from a
 broker, charting platform, or paid feed into `external_market_data/`, then
 normalize it:
 
 ```powershell
-python .\futures_data_adapter.py --input .\external_market_data\nq_2024_2026_1m.csv --out-csv .\NQ_external_1min_data.csv --input-timezone America/New_York --resample 1min --summary-output futures_data_adapter_summary.json
+python .\futures_data_adapter.py --input .\external_market_data\nq_2024_2026_1m.csv --out-csv .\NQ_external_1min_data.csv --input-timezone America/New_York --resample 1min --summary-output reports/futures_data_adapter_summary.json
 ```
 
 For exports with separate date/time columns or unusual column names:
@@ -424,15 +452,15 @@ Fetch historical U.S. TradingView economic-calendar rows and align them to NQ
 bars:
 
 ```powershell
-python .\macro_reaction_study.py --fetch-tv-events --start-date 2026-03-26 --end-date 2026-06-05 --market-data .\NQ_5min_data.csv --symbol NQ --tv-min-importance 1 --fetched-events-output macro_events_history_2026_03_26_06_05.csv --cluster-output macro_event_clusters_5m_60d.csv --reaction-output macro_reactions_5m.csv --profile-output macro_reaction_profiles_5m.csv --min-events 1
+python .\macro_reaction_study.py --fetch-tv-events --start-date 2026-03-26 --end-date 2026-06-05 --market-data .\data/NQ_5min_data.csv --symbol NQ --tv-min-importance 1 --fetched-events-output studies/macro_events_history_2026_03_26_06_05.csv --cluster-output studies/macro_event_clusters_5m_60d.csv --reaction-output studies/macro_reactions_5m.csv --profile-output studies/macro_reaction_profiles_5m.csv --min-events 1
 ```
 
 Outputs:
 
-- `macro_events_history_2026_03_26_06_05.csv`: fetched macro events.
-- `macro_event_clusters_5m_60d.csv`: same-timestamp release clusters.
-- `macro_reactions_5m.csv`: each release moment matched to price reaction windows.
-- `macro_reaction_profiles_5m.csv`: learned probabilities by catalyst family
+- `studies/macro_events_history_2026_03_26_06_05.csv`: fetched macro events.
+- `studies/macro_event_clusters_5m_60d.csv`: same-timestamp release clusters.
+- `studies/macro_reactions_5m.csv`: each release moment matched to price reaction windows.
+- `studies/macro_reaction_profiles_5m.csv`: learned probabilities by catalyst family
   and surprise side.
 
 The reaction learner keeps two separate surprise interpretations:
@@ -458,7 +486,7 @@ overconfident raw probabilities. Both raw and smoothed columns are kept:
 For stronger probabilities, expand the history window and use more observations:
 
 ```powershell
-python .\macro_reaction_study.py --fetch-tv-events --start-date 2025-01-01 --end-date 2026-06-05 --market-data .\NQ_5min_data.csv --symbol NQ --tv-min-importance 0 --min-events 5
+python .\macro_reaction_study.py --fetch-tv-events --start-date 2025-01-01 --end-date 2026-06-05 --market-data .\data/NQ_5min_data.csv --symbol NQ --tv-min-importance 0 --min-events 5
 ```
 
 Yahoo limits intraday history, so deeper 1-minute or 5-minute studies may need a
@@ -487,7 +515,7 @@ python .\catalyser_news.py --calendar --tv-calendar --watch-releases --run-forev
 Calibrate live releases with learned reaction profiles:
 
 ```powershell
-python .\macro_reaction_study.py --calibrate-live macro_releases.csv --profiles macro_reaction_profiles_5m.csv --calibrated-output macro_releases_calibrated.csv --live-signal-output macro_live_signal.csv
+python .\macro_reaction_study.py --calibrate-live macro_releases.csv --profiles studies/macro_reaction_profiles_5m.csv --calibrated-output macro_releases_calibrated.csv --live-signal-output macro_live_signal.csv
 ```
 
 Calibrated output includes the live rule fields:
@@ -520,7 +548,7 @@ After releases have occurred and reaction files exist, grade predictions against
 actual NQ movement:
 
 ```powershell
-python .\macro_signal_performance.py --signals .\macro_live_signal.csv --reactions .\macro_reactions_dabento_full_1m.csv .\macro_reactions_dabento_full_5m.csv .\macro_reactions_dabento_full_60m.csv --reaction-labels dabento_full_1m dabento_full_5m dabento_full_60m --windows-minutes 5,15,30,60,240,390 --primary-window-minutes 60 --grades-output macro_signal_grades.csv --performance-output macro_signal_performance.csv
+python .\macro_signal_performance.py --signals .\macro_live_signal.csv --reactions .\studies/macro_reactions_dabento_full_1m.csv .\studies/macro_reactions_dabento_full_5m.csv .\studies/macro_reactions_dabento_full_60m.csv --reaction-labels dabento_full_1m dabento_full_5m dabento_full_60m --windows-minutes 5,15,30,60,240,390 --primary-window-minutes 60 --grades-output macro_signal_grades.csv --performance-output macro_signal_performance.csv
 ```
 
 Outputs:
@@ -550,7 +578,7 @@ Keep the separate daily confirmation layer as a slower baseline cross-check for
 the current dashboard feed:
 
 ```powershell
-python .\macro_daily_confirmation.py --signals .\macro_live_signal_adjusted.csv --daily-profiles .\macro_reaction_profiles_investing_daily.csv --output .\macro_live_signal_current.csv --summary-output .\macro_daily_confirmation_report.json
+python .\macro_daily_confirmation.py --signals .\macro_live_signal_adjusted.csv --daily-profiles .\studies/macro_reaction_profiles_investing_daily.csv --output .\macro_live_signal_current.csv --summary-output .\macro_daily_confirmation_report.json
 ```
 
 - `macro_live_signal_current.csv`: trust-adjusted signals with daily baseline
@@ -644,8 +672,8 @@ runner recovery.
 Run the validation reports manually:
 
 ```powershell
-python .\macro_data_quality.py --market-data .\NQ_5min_data.csv --events-file .\macro_releases.csv
-python .\macro_timing_audit.py --market-data .\NQ_5min_data.csv --events-file .\macro_releases.csv
+python .\macro_data_quality.py --market-data .\data/NQ_5min_data.csv --events-file .\macro_releases.csv
+python .\macro_timing_audit.py --market-data .\data/NQ_5min_data.csv --events-file .\macro_releases.csv
 python .\macro_probability_validation.py --grades .\macro_signal_grades.csv
 ```
 
@@ -806,31 +834,31 @@ Those files are kept for reference, not deleted.
 | `macro_live_signal_current.csv` | Current dashboard signal contract with daily confirmation applied. |
 | `macro_news_feed.csv` | Runtime interpreted headline feed loaded by the dashboard. |
 | `macro_news_feed_summary.json` | Latest news-fetch counts, titles, and fetch warnings. |
-| `macro_reaction_profiles_5m.csv` | Smoothed historical reaction probabilities. |
-| `macro_reaction_profiles_60m.csv` | Deeper 2024-2026 hourly reaction probabilities. |
-| `macro_reaction_profiles_dabento_full_1m.csv` | Active full-range 1m Dabento calibration profile. |
-| `macro_reaction_profiles_dabento_full_5m.csv` | Active full-range derived 5m Dabento reaction profile. |
-| `macro_reaction_profiles_dabento_full_60m.csv` | Active full-range derived 60m Dabento reaction profile. |
-| `macro_event_clusters_5m_60d.csv` | Same-timestamp macro release clusters. |
+| `studies/macro_reaction_profiles_5m.csv` | Smoothed historical reaction probabilities. |
+| `studies/macro_reaction_profiles_60m.csv` | Deeper 2024-2026 hourly reaction probabilities. |
+| `studies/macro_reaction_profiles_dabento_full_1m.csv` | Active full-range 1m Dabento calibration profile. |
+| `studies/macro_reaction_profiles_dabento_full_5m.csv` | Active full-range derived 5m Dabento reaction profile. |
+| `studies/macro_reaction_profiles_dabento_full_60m.csv` | Active full-range derived 60m Dabento reaction profile. |
+| `studies/macro_event_clusters_5m_60d.csv` | Same-timestamp macro release clusters. |
 | `macro_signal_grades.csv` | Per-signal outcome grade rows. |
 | `macro_signal_performance.csv` | Dashboard-ready model accuracy summary. |
 | `macro_signal_trust_weights.csv` | Accuracy/whipsaw-based trust weights used by `macro_signal_trust.py`. |
 | `macro_data_quality_report.json` | Latest market-data quality report. |
 | `macro_probability_validation_report.json` | Latest probability validation summary. |
 | `macro_timing_audit_report.json` | Latest release/bar timing audit summary. |
-| `market_data_backfill_report.json` | Latest missing market-data range report. |
-| `market_data_verification_report.json` | Latest candidate market-data verification report. |
+| `reports/market_data_backfill_report.json` | Latest missing market-data range report. |
+| `reports/market_data_verification_report.json` | Latest candidate market-data verification report. |
 | `extra/` | Archived side tools, private exports, and old generated artifacts. |
 | `requirements.txt` | Python dependencies. |
 
 ## Data Notes
 
-Generated market files such as `NQ_1min_data.csv`, `NQ_5min_data.csv`, and
-`macro_reaction_profiles_5m.csv` are reproducible research artifacts. Private
+Generated market files such as `data/NQ_1min_data.csv`, `data/NQ_5min_data.csv`, and
+`studies/macro_reaction_profiles_5m.csv` are reproducible research artifacts. Private
 broker exports such as raw fills, order-history exports, and account journals
 should stay local unless you intentionally want them in a public repository.
 Large vendor/export datasets such as `Dataset_*.csv`, `NQ_in_*.csv`,
-`*Historical Data.csv`, raw `dabento/` files, `NQ_dabento_*data.csv`, and
+`*Historical Data.csv`, raw `data/dabento/` files, `NQ_dabento_*data.csv`, and
 candidate normalized files such as `NQ_external_*candidate.csv` are ignored by
 Git. Small reports, roll maps, and reaction/profile artifacts are allowed so
 the research state can be reproduced without publishing the vendor bars.
@@ -841,11 +869,11 @@ the root focused on the runnable pipeline.
 
 As of the latest local run:
 
-- `NQ_1min_data.csv`: 7,860 rows from 2026-05-29 04:09 to 2026-06-05 20:59.
-- `NQ_5min_data.csv`: 13,552 rows from 2026-03-26 04:05 to 2026-06-05 20:55.
-- `NQ_15min_data.csv`: 4,537 rows from 2026-03-26 04:00 to 2026-06-05 20:45.
-- `NQ_60min_data.csv`: 13,680 rows from 2024-01-12 05:00 to 2026-06-05 20:00.
-- `NQ_F_daily.csv`: 2,515 rows from 2016-06-07 to 2026-06-05.
+- `data/NQ_1min_data.csv`: 7,860 rows from 2026-05-29 04:09 to 2026-06-05 20:59.
+- `data/NQ_5min_data.csv`: 13,552 rows from 2026-03-26 04:05 to 2026-06-05 20:55.
+- `data/NQ_15min_data.csv`: 4,537 rows from 2026-03-26 04:00 to 2026-06-05 20:45.
+- `data/NQ_60min_data.csv`: 13,680 rows from 2024-01-12 05:00 to 2026-06-05 20:00.
+- `data/NQ_F_daily.csv`: 2,515 rows from 2016-06-07 to 2026-06-05.
 - Yahoo rejected 30 days of 1-minute NQ data and reported that only about 8
   days of 1m granularity are available per request.
 - `extra/catalyser_news_github_upload.zip` contained archived Yahoo intraday
@@ -872,8 +900,8 @@ As of the latest local run:
   points, `NQ_in_30_minute.csv` with 3,168 of 4,464, and
   `NQ_in_15_minute.csv` with 1,224 of 1,623. Treat them as a separate
   TradingView/NQ1! source until roll and session-close differences are modeled.
-  See `market_data_verification_nq_in_batch_summary.csv` for the full matrix.
-- `Nasdaq 100 Futures Historical Data.csv` from Investing.com was verified as a
+  See `reports/market_data_verification_nq_in_batch_summary.csv` for the full matrix.
+- `data/Nasdaq 100 Futures Historical Data.csv` from Investing.com was verified as a
   separate daily 2020-2025 source. It has 1,570 rows, no duplicate dates, and
   1,481 of 1,510 overlapping Yahoo daily rows matched all OHLC fields within
   0.25 points. It is still marked `do_not_use_yet` because it has two OHLC
@@ -881,7 +909,7 @@ As of the latest local run:
   futures roll periods. Use it as a separate Investing.com daily baseline until
   roll/session differences are modeled.
 - `market_data_source_reconcile.py` produced
-  `NQ_investing_daily_clean_candidate.csv` with 1,481 clean daily rows from
+  `data/NQ_investing_daily_clean_candidate.csv` with 1,481 clean daily rows from
   2020-01-02 to 2025-12-31. The clean candidate excludes no-reference rows,
   source OHLC anomalies, and roll/session mismatch rows.
 - Same-session daily reaction studies were built for Yahoo and the clean
@@ -906,18 +934,18 @@ As of the latest local run:
   derived 60m. Each study clustered 282 release moments and produced 85 profile
   rows.
 - `market_data_config.json` now points live calibration to
-  `macro_reaction_profiles_dabento_full_1m.csv`, active quality/timing checks
-  to `NQ_dabento_full_5min_data.csv`, and active performance grading to
-  `macro_reactions_dabento_full_1m.csv`,
-  `macro_reactions_dabento_full_5m.csv`, and
-  `macro_reactions_dabento_full_60m.csv`.
+  `studies/macro_reaction_profiles_dabento_full_1m.csv`, active quality/timing checks
+  to `data/NQ_dabento_full_5min_data.csv`, and active performance grading to
+  `studies/macro_reactions_dabento_full_1m.csv`,
+  `studies/macro_reactions_dabento_full_5m.csv`, and
+  `studies/macro_reactions_dabento_full_60m.csv`.
 - `macro_signal_performance.py` now skips out-of-coverage unknown reactions and
   produced 24 valid graded rows plus 51 performance summary rows from the
   active full-range Dabento reaction set.
 - `macro_signal_trust.py` produced 51 trust-weight rows and 14 trust-adjusted
   live signal rows.
 - `macro_daily_confirmation.py` now produces `macro_live_signal_current.csv`
-  from the trust-adjusted signal plus `macro_reaction_profiles_investing_daily.csv`.
+  from the trust-adjusted signal plus `studies/macro_reaction_profiles_investing_daily.csv`.
   The latest run matched all 14 live rows: 1 with-signal confirmation,
   11 daily leans, and 2 neutral confirmations. The average absolute probability
   adjustment was 0.0016, with no direction changes.

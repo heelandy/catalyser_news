@@ -1,10 +1,14 @@
 # Starts the dashboard HTTP server and the live macro pipeline in the background.
 # Safe to run repeatedly: it refuses to start a second runner or a second server.
+# The dashboard always starts; the runner only starts inside the StartAt-StopAt
+# window unless -ForceRunner is passed.
 param(
     [int]$DashboardPort = 8787,
     [int]$LoopSeconds = 60,
+    [string]$StartAt = "07:00",
     [string]$StopAt = "18:00",
-    [switch]$SkipDashboard
+    [switch]$SkipDashboard,
+    [switch]$ForceRunner
 )
 
 $ErrorActionPreference = "Stop"
@@ -22,9 +26,23 @@ function Get-DashboardProcesses {
         Where-Object { $_.Name -like "python*" -and $_.CommandLine -match "http\.server $Port" }
 }
 
+function In-ActiveWindow {
+    param([string]$Start, [string]$Stop)
+    try {
+        $now = (Get-Date).TimeOfDay
+        $startTime = [TimeSpan]::Parse($Start)
+        $stopTime = [TimeSpan]::Parse($Stop)
+        return ($now -ge $startTime) -and ($now -lt $stopTime)
+    } catch {
+        return $true
+    }
+}
+
 $existingRunner = @(Get-RunnerProcesses)
 if ($existingRunner.Count -gt 0) {
     Write-Output "Live runner already running (PID $($existingRunner[0].ProcessId)); not starting a duplicate."
+} elseif (-not $ForceRunner -and -not (In-ActiveWindow -Start $StartAt -Stop $StopAt)) {
+    Write-Output "Outside the $StartAt-$StopAt window; runner not started (it starts at $StartAt, or pass -ForceRunner to start now)."
 } else {
     $runnerArgs = @(
         ".\macro_pipeline_runner.py",

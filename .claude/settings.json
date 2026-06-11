@@ -20,7 +20,12 @@
       "Read(//c/Users/heela/AppData/Local/Temp/**)",
       "PowerShell($edge = \"C:\\\\Program Files \\(x86\\)\\\\Microsoft\\\\Edge\\\\Application\\\\msedge.exe\"; if \\(-not \\(Test-Path $edge\\)\\) { $edge = \"C:\\\\Program Files\\\\Microsoft\\\\Edge\\\\Application\\\\msedge.exe\" }; & $edge --headless --disable-gpu --window-size=640,1100 --screenshot=\"$env:TEMP\\\\nq_popup_preview2.png\" \"http://127.0.0.1:8787/dashboard/?popupPreview=1\" 2>$null; Start-Sleep -Seconds 4; Test-Path \"$env:TEMP\\\\nq_popup_preview2.png\")",
       "Bash(cd \"/c/Users/heela/OneDrive/Área de Trabalho/python nq Catalyst\" && printf '1.0.9\\\\n' > VERSION && echo ok)",
-      "Bash(python tools/update_dashboard_asset_versions.py --check)"
+      "Bash(python tools/update_dashboard_asset_versions.py --check)",
+      "Bash(python -)",
+      "Bash(python -m py_compile upload_to_github.py)",
+      "Bash(python -m py_compile macro_pipeline_runner.py fetch_nq_yahoo.py dabento_nq_adapter.py macro_daily_confirmation.py macro_daily_source_compare.py macro_data_quality.py macro_live_regime_builder.py macro_signal_performance.py macro_timing_audit.py market_data_backfill.py market_data_source_reconcile.py upload_to_github.py)",
+      "Bash(timeout 300 python macro_pipeline_runner.py --news-feed-refresh-seconds 0)",
+      "PowerShell($edge = \"C:\\\\Program Files \\(x86\\)\\\\Microsoft\\\\Edge\\\\Application\\\\msedge.exe\"; if \\(-not \\(Test-Path $edge\\)\\) { $edge = \"C:\\\\Program Files\\\\Microsoft\\\\Edge\\\\Application\\\\msedge.exe\" }; & $edge --headless --disable-gpu --window-size=1400,900 --screenshot=\"$env:TEMP\\\\nq_alerts_wide.png\" \"http://127.0.0.1:8787/dashboard/\" 2>$null; Start-Sleep -Seconds 4; & $edge --headless --disable-gpu --window-size=480,900 --screenshot=\"$env:TEMP\\\\nq_alerts_narrow.png\" \"http://127.0.0.1:8787/dashboard/\" 2>$null; Start-Sleep -Seconds 4; Write-Output done)"
     ],
     "additionalDirectories": [
       "c:\\c\\Users\\heela\\OneDrive\\Área de Trabalho\\python nq Catalyst"

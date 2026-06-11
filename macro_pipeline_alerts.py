@@ -224,6 +224,21 @@ def conflict_message(current: dict[str, Any]) -> str:
     ).strip()
 
 
+def short_reason(text: Any, limit: int = 220) -> str:
+    value = clean(text)
+    if len(value) <= limit:
+        return value
+    return value[: limit - 3].rstrip() + "..."
+
+
+def titles_text(snapshots: list[dict[str, Any]], shown: int = 6) -> str:
+    titles = [clean(snapshot.get("title"), "?") for snapshot in snapshots]
+    text = ", ".join(titles[:shown])
+    if len(titles) > shown:
+        text += f" and {len(titles) - shown} more"
+    return text
+
+
 def signal_alerts(
     current_signals: dict[str, dict[str, Any]],
     previous_signals: dict[str, dict[str, Any]],
@@ -233,19 +248,14 @@ def signal_alerts(
 ) -> list[dict[str, str]]:
     alerts: list[dict[str, str]] = []
     first_snapshot = not previous_signals
+    regime_transitions: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    new_signals: list[dict[str, Any]] = []
 
     for key, current in sorted(current_signals.items(), key=lambda item: (item[1].get("release_time", ""), item[1].get("title", ""))):
         previous = previous_signals.get(key)
         if previous is None:
             if emit_initial_alerts or not first_snapshot:
-                alerts.append(
-                    alert_row(
-                        "new_signal",
-                        "info",
-                        f"New macro signal loaded: {current['title']} at {current['release_time']}.",
-                        current,
-                    )
-                )
+                new_signals.append(current)
                 if conflict_active(current):
                     alerts.append(alert_row("risk_lock_triggered", "high", conflict_message(current), current))
             continue
@@ -276,21 +286,11 @@ def signal_alerts(
             )
 
         if previous.get("live_market_regime_direction") != current.get("live_market_regime_direction"):
-            severity = "high" if current.get("live_market_regime_direction") == "bearish" else "medium"
-            alerts.append(
-                alert_row(
-                    "live_regime_changed",
-                    severity,
-                    (
-                        f"{current['title']} live regime changed from "
-                        f"{previous.get('live_market_regime_direction') or '--'} to "
-                        f"{current.get('live_market_regime_direction') or '--'}. "
-                        f"{current.get('live_market_regime_reason') or ''}"
-                    ).strip(),
-                    current,
-                    previous,
-                )
+            transition = (
+                clean(previous.get("live_market_regime_direction"), "--"),
+                clean(current.get("live_market_regime_direction"), "--"),
             )
+            regime_transitions.setdefault(transition, []).append(current)
 
         if not conflict_active(previous) and conflict_active(current):
             alerts.append(alert_row("risk_lock_triggered", "high", conflict_message(current), current, previous))
@@ -327,6 +327,50 @@ def signal_alerts(
                         previous,
                     )
                 )
+
+    if new_signals:
+        if len(new_signals) == 1:
+            current = new_signals[0]
+            alerts.append(
+                alert_row(
+                    "new_signal",
+                    "info",
+                    f"New macro signal loaded: {current['title']} at {current['release_time']}.",
+                    current,
+                )
+            )
+        else:
+            alerts.append(
+                alert_row(
+                    "new_signal",
+                    "info",
+                    f"{len(new_signals)} new macro signals loaded: {titles_text(new_signals)}.",
+                    {**new_signals[0], "title": f"{len(new_signals)} New Signals", "release_time": ""},
+                )
+            )
+
+    for (previous_direction, current_direction), affected in regime_transitions.items():
+        severity = "high" if current_direction == "bearish" else "medium"
+        reason = short_reason(affected[0].get("live_market_regime_reason"))
+        if len(affected) == 1:
+            current = affected[0]
+            message = (
+                f"{current['title']} live regime changed from {previous_direction} to {current_direction}. {reason}"
+            ).strip()
+            alerts.append(alert_row("live_regime_changed", severity, message, current))
+        else:
+            message = (
+                f"Live market regime changed from {previous_direction} to {current_direction}, "
+                f"affecting {len(affected)} catalysts: {titles_text(affected)}. {reason}"
+            ).strip()
+            alerts.append(
+                alert_row(
+                    "live_regime_changed",
+                    severity,
+                    message,
+                    {**affected[0], "title": "Live Market Regime", "release_time": ""},
+                )
+            )
 
     return alerts
 

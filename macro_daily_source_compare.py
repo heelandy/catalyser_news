@@ -21,8 +21,8 @@ import pandas as pd
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Compare daily macro reaction behavior across two sources.")
-    p.add_argument("--left-reactions", default="macro_reactions_yahoo_daily.csv")
-    p.add_argument("--right-reactions", default="macro_reactions_investing_daily.csv")
+    p.add_argument("--left-reactions", default="studies/macro_reactions_yahoo_daily.csv")
+    p.add_argument("--right-reactions", default="studies/macro_reactions_investing_daily.csv")
     p.add_argument("--left-name", default="yahoo_daily")
     p.add_argument("--right-name", default="investing_daily")
     p.add_argument("--neutral-threshold-pts", type=float, default=10.0)

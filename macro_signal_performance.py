@@ -245,7 +245,7 @@ def summarize_accuracy(grades: pd.DataFrame, windows: list[int]) -> pd.DataFrame
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Grade macro live signals against post-release NQ reactions.")
     p.add_argument("--signals", default="macro_live_signal.csv", help="UI-ready live signal CSV")
-    p.add_argument("--reactions", nargs="+", default=["macro_reactions_1m.csv", "macro_reactions_5m.csv"], help="Reaction CSV files")
+    p.add_argument("--reactions", nargs="+", default=["studies/macro_reactions_1m.csv", "studies/macro_reactions_5m.csv"], help="Reaction CSV files")
     p.add_argument("--reaction-labels", nargs="*", help="Optional labels matching --reactions")
     p.add_argument("--windows-minutes", default=",".join(map(str, DEFAULT_WINDOWS)))
     p.add_argument("--primary-window-minutes", type=int, default=60)

@@ -32,6 +32,59 @@ class NewsFeedTests(unittest.TestCase):
         self.assertIn("macro_policy_pressure", interpreted["risk_flags"])
         self.assertIn("nq_growth_pressure", interpreted["risk_flags"])
 
+    def test_listicle_content_is_heavily_discounted(self):
+        row = {
+            "provider": "yahoo",
+            "source": "Motley Fool",
+            "title": "3 Beaten-Down AI Chip Stocks Worth a Closer Look After the Sell-Off",
+            "summary": "Here are three reasons the sell-off could be a buying opportunity.",
+            "url": "",
+            "published_at": datetime(2026, 6, 11, tzinfo=timezone.utc),
+        }
+        interpreted = news.interpret(row)
+        self.assertIn("low_signal_content", interpreted["risk_flags"])
+        self.assertLessEqual(interpreted["confidence"], 0.10)
+
+    def test_strong_source_keeps_more_confidence_than_weak_source(self):
+        base = {
+            "provider": "yahoo",
+            "title": "Chip stocks slump as the semiconductor sell-off deepens",
+            "summary": "",
+            "url": "",
+            "published_at": datetime(2026, 6, 11, tzinfo=timezone.utc),
+        }
+        strong = news.interpret({**base, "source": "Reuters"})
+        weak = news.interpret({**base, "source": "Insider Monkey"})
+        self.assertGreater(strong["confidence"], weak["confidence"])
+
+    def test_news_bias_decays_old_headlines(self):
+        def row(published, title):
+            return news.interpret({
+                "provider": "yahoo",
+                "source": "Reuters",
+                "title": title,
+                "summary": "",
+                "url": "",
+                "published_at": published,
+            })
+
+        now = datetime(2026, 6, 11, 12, 0, tzinfo=timezone.utc)
+        fresh_bull = row(now, "Stocks rally as futures rise on strong earnings beat")
+        stale_bear = row(datetime(2026, 6, 11, 0, 0, tzinfo=timezone.utc), "Market selloff deepens as futures fall and stocks slump")
+        fresh_bear = row(now, "Market selloff deepens as futures fall and stocks slump")
+
+        decayed = news.news_bias([fresh_bull, stale_bear], now)
+        undecayed = news.news_bias([fresh_bull, fresh_bear], now)
+
+        # the 12-hour-old bearish headline should weigh far less than a fresh one
+        self.assertGreater(decayed["score"], undecayed["score"])
+        self.assertGreater(decayed["score"], 0)
+
+    def test_same_story_under_two_symbols_dedupes_by_title(self):
+        a = {"title": "Dow Jones Futures Fall On Iran News!", "url": "https://a.test/1"}
+        b = {"title": "Dow Jones Futures Fall on Iran news", "url": "https://b.test/2"}
+        self.assertEqual(news.article_key(a), news.article_key(b))
+
     def test_auto_provider_falls_back_to_yahoo_rss(self):
         args = argparse.Namespace(
             provider="auto",

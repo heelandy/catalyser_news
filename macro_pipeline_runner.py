@@ -25,10 +25,10 @@ from datetime import datetime
 from pathlib import Path
 
 
-DEFAULT_REACTION_FILES = ["macro_reactions_1m.csv", "macro_reactions_5m.csv", "macro_reactions_60m.csv"]
+DEFAULT_REACTION_FILES = ["studies/macro_reactions_1m.csv", "studies/macro_reactions_5m.csv", "studies/macro_reactions_60m.csv"]
 DEFAULT_REACTION_LABELS = ["1m", "5m", "60m"]
-DEFAULT_PROFILES = "macro_reaction_profiles_5m.csv"
-DEFAULT_DAILY_CONFIRMATION_PROFILES = "macro_reaction_profiles_investing_daily.csv"
+DEFAULT_PROFILES = "studies/macro_reaction_profiles_5m.csv"
+DEFAULT_DAILY_CONFIRMATION_PROFILES = "studies/macro_reaction_profiles_investing_daily.csv"
 
 
 @dataclass
@@ -37,6 +37,7 @@ class Stage:
     command: list[str]
     required_inputs: list[str]
     expected_outputs: list[str]
+    optional: bool = False
 
 
 def now_iso() -> str:
@@ -123,7 +124,7 @@ def python_cmd(args: argparse.Namespace, script_name: str) -> list[str]:
     return [args.python, script_name]
 
 
-def news_feed_command(args: argparse.Namespace) -> list[str]:
+def news_feed_command(args: argparse.Namespace, cache_minutes: int | None = None) -> list[str]:
     return python_cmd(args, "macro_news_feed.py") + [
         "--provider",
         args.news_feed_provider,
@@ -138,7 +139,7 @@ def news_feed_command(args: argparse.Namespace) -> list[str]:
         "--lookback-hours",
         str(args.news_feed_lookback_hours),
         "--cache-minutes",
-        str(args.news_feed_cache_minutes),
+        str(cache_minutes if cache_minutes is not None else args.news_feed_cache_minutes),
         "--output",
         args.news_feed_output,
         "--context-output",
@@ -146,6 +147,46 @@ def news_feed_command(args: argparse.Namespace) -> list[str]:
         "--summary-output",
         args.news_feed_summary_output,
     ]
+
+
+def release_within_minutes(releases_path: str, window_minutes: float) -> bool:
+    """True when any calendar release is within +/- window_minutes of now (UTC)."""
+    path = Path(releases_path)
+    if not path.exists():
+        return False
+    try:
+        import csv as csv_mod
+        from datetime import timezone
+
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        with path.open("r", encoding="utf-8-sig", newline="") as f:
+            for row in csv_mod.DictReader(f):
+                text = (row.get("release_time") or "").strip()
+                if not text:
+                    continue
+                try:
+                    release_time = datetime.fromisoformat(text.replace("Z", ""))
+                except ValueError:
+                    continue
+                if release_time.tzinfo is not None:
+                    release_time = release_time.astimezone(timezone.utc).replace(tzinfo=None)
+                if abs((release_time - now).total_seconds()) <= window_minutes * 60:
+                    return True
+    except Exception:
+        return False
+    return False
+
+
+def market_data_due(args: argparse.Namespace) -> bool:
+    """Throttle Yahoo refreshes: only refresh when the check file is older than the interval."""
+    minutes = max(float(args.market_refresh_minutes), 0.0)
+    if minutes <= 0:
+        return True
+    check_file = Path(args.market_refresh_check_file)
+    if not check_file.exists():
+        return True
+    age_seconds = time.time() - check_file.stat().st_mtime
+    return age_seconds >= minutes * 60
 
 
 def build_stages(args: argparse.Namespace) -> list[Stage]:
@@ -161,7 +202,7 @@ def build_stages(args: argparse.Namespace) -> list[Stage]:
             )
         )
 
-    if args.market_preset != "none":
+    if args.market_preset != "none" and market_data_due(args):
         market_command = python_cmd(args, "fetch_nq_yahoo.py") + ["--preset", args.market_preset]
         if args.market_ticker:
             market_command += ["--ticker", args.market_ticker]
@@ -171,6 +212,7 @@ def build_stages(args: argparse.Namespace) -> list[Stage]:
                 command=market_command,
                 required_inputs=[],
                 expected_outputs=[],
+                optional=True,
             )
         )
 
@@ -525,15 +567,20 @@ def news_refresher_loop(
     stop_event: threading.Event,
     news_lock: threading.Lock,
 ) -> None:
-    interval = max(int(args.news_feed_refresh_seconds), 0)
-    if interval <= 0:
+    base_interval = max(int(args.news_feed_refresh_seconds), 0)
+    if base_interval <= 0:
         return
-    while not stop_event.wait(interval):
+    while True:
+        near_release = release_within_minutes(args.macro_output, args.news_fast_window_minutes)
+        interval = min(base_interval, 60) if near_release else base_interval
+        if stop_event.wait(interval):
+            return
         with news_lock:
             if stop_event.is_set():
                 return
-            command = news_feed_command(args)
-            log(f"START news_feed_refresh: {command_text(command)}", log_file)
+            near_release = release_within_minutes(args.macro_output, args.news_fast_window_minutes)
+            command = news_feed_command(args, cache_minutes=1 if near_release else None)
+            log(f"START news_feed_refresh{' (release window)' if near_release else ''}: {command_text(command)}", log_file)
             try:
                 proc = subprocess.run(command, cwd=root, capture_output=True, text=True)
                 for output_line in (proc.stdout or "").splitlines():
@@ -592,11 +639,16 @@ def run_cycle(args: argparse.Namespace, root: Path, cycle: int) -> bool:
         if args.reaction_labels and len(args.reaction_labels) != len(args.reaction_files):
             raise RuntimeError("--reaction-labels must have the same count as --reaction-files")
         for stage in stages:
-            if stage.name in ("news_feed", "live_regime_context"):
-                with news_lock:
+            try:
+                if stage.name in ("news_feed", "live_regime_context"):
+                    with news_lock:
+                        run_stage(stage, root, args.dry_run, log_file)
+                else:
                     run_stage(stage, root, args.dry_run, log_file)
-            else:
-                run_stage(stage, root, args.dry_run, log_file)
+            except Exception as exc:
+                if not stage.optional:
+                    raise
+                log(f"Optional stage {stage.name} failed and was skipped: {exc}", log_file)
         status["ok"] = True
         log(f"Pipeline cycle {cycle} complete", log_file)
         return True
@@ -665,6 +717,17 @@ def parse_args() -> argparse.Namespace:
 
     p.add_argument("--market-preset", choices=["config", "none", "daily", "intraday", "intraday-deep"], default="config")
     p.add_argument("--market-ticker", default="", help="Ticker override for market-data refresh")
+    p.add_argument(
+        "--market-refresh-minutes",
+        type=float,
+        default=5.0,
+        help="Skip the Yahoo market-data refresh stage when the check file is fresher than this (0 refreshes every cycle)",
+    )
+    p.add_argument(
+        "--market-refresh-check-file",
+        default="data/NQ_5min_data.csv",
+        help="File whose age decides whether the market-data refresh stage runs",
+    )
 
     p.add_argument("--skip-live-fetch", action="store_true")
     p.add_argument("--tv-countries", default="us")
@@ -718,6 +781,12 @@ def parse_args() -> argparse.Namespace:
         default=180,
         help="Refresh interpreted news in the background this often while a cycle runs (0 disables); keeps news fresh during long --watch-releases windows",
     )
+    p.add_argument(
+        "--news-fast-window-minutes",
+        type=float,
+        default=15.0,
+        help="Within this many minutes of a scheduled release, the background news refresh speeds up to 60s with a 1-minute cache",
+    )
     p.add_argument("--news-feed-output", default="macro_news_feed.csv")
     p.add_argument("--news-feed-summary-output", default="macro_news_feed_summary.json")
     p.add_argument("--tape-signal-files", nargs="*", default=["macro_tape_signals.json", "macro_tape_signals.csv"], help="Optional tape/ORB signal JSON or CSV files")
@@ -749,7 +818,7 @@ def normalize_args(args: argparse.Namespace) -> argparse.Namespace:
     if args.profiles == DEFAULT_PROFILES and market_config.get("active_profiles_file"):
         args.profiles = str(market_config["active_profiles_file"])
 
-    args.active_market_data_file = str(market_config.get("active_market_data_file") or "NQ_5min_data.csv")
+    args.active_market_data_file = str(market_config.get("active_market_data_file") or "data/NQ_5min_data.csv")
 
     if not args.market_ticker:
         yahoo = market_config.get("yahoo") if isinstance(market_config.get("yahoo"), dict) else {}

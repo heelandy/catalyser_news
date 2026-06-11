@@ -1,5 +1,34 @@
 # Changelog
 
+## 1.1.0 - Deep History, Live Tape, News Quality
+
+- Rebuilt the macro reaction studies on the full 2010-2026 TradingView
+  high-importance release history (fetched in 30-day chunks) against the
+  full-range Dabento 1m/5m/60m data, replacing the 2024-2026-only sample that
+  produced low-significance profiles. Live calibration and performance grading
+  now point at the deep-history artifacts.
+- Re-enabled the live market tape: the runner now refreshes Yahoo 5m data in a
+  throttled, non-fatal `market_data_refresh` stage (`--market-refresh-minutes`,
+  default 5) and `active_market_data_file` points at `data/NQ_5min_data.csv`,
+  so the regime builder's tape component is no longer stale-weighted to zero.
+- Improved news interpretation quality: listicle/evergreen headlines ("N stocks
+  to buy", "worth a closer look") are flagged `low_signal_content` and heavily
+  discounted, publishers are weighted (Reuters/Bloomberg > Motley Fool/Insider
+  Monkey), the aggregate news bias now decays headlines with a 90-minute
+  half-life, and duplicate stories fetched under different symbols dedupe by
+  normalized title.
+- Sped up reaction time around releases: within 15 minutes of a scheduled
+  release the background news refresher tightens to 60 seconds with a 1-minute
+  cache (`--news-fast-window-minutes`).
+- Clustered duplicate alerts: a live-regime flip now produces one alert listing
+  the affected catalysts instead of one alert per signal row, and bulk signal
+  loads collapse into a single `new_signal` alert. Regime reasons are truncated
+  in alert messages.
+- Dashboard: alert rows are clickable (selects the signal and opens the detail
+  popup), alert text wraps responsively instead of overflowing, the signals
+  table got a sticky first column and narrower minimum width, and clicking a
+  row on small screens scrolls the detail panel into view.
+
 ## 1.0.9 - Timely News, Alert Popup Card, Daily Schedule
 
 - Fixed news not updating on time: the `news_feed` stage now runs first in
@@ -24,6 +53,12 @@
   pipeline daily at 7:00 AM and stop it at 6:00 PM so it does not run around
   the clock.
 - Added runner schedule/stage-order tests and dashboard popup contract tests.
+- Sorted the workspace by use: Pine scripts in `pine/` (options script for
+  SPY/QQQ, ORB V1 for NQ), market OHLC history in `data/`, reaction studies
+  and profiles in `studies/`, verification/reconciliation reports in
+  `reports/`. Runtime files and modules stay at the root;
+  `market_data_config.json`, module defaults, the README, and the GitHub
+  upload allowlist now point at the new paths.
 
 ## 1.0.8 - Full-Range Dabento 1m Source
 

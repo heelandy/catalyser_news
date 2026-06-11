@@ -200,7 +200,7 @@ def quality_report(market_data: str, events_file: str, max_gaps: int) -> tuple[d
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Create a market-data quality report for the macro catalyst pipeline.")
-    p.add_argument("--market-data", default="NQ_5min_data.csv")
+    p.add_argument("--market-data", default="data/NQ_5min_data.csv")
     p.add_argument("--events-file", default="macro_releases.csv")
     p.add_argument("--report-output", default="macro_data_quality_report.json")
     p.add_argument("--summary-output", default="macro_data_quality_summary.csv")

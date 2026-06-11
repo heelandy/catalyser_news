@@ -333,8 +333,66 @@ def fetch_tradingview(max_items: int, timeout: int, url: str) -> list[dict[str, 
     return rows
 
 
+LOW_SIGNAL_PATTERNS = [
+    re.compile(pattern)
+    for pattern in [
+        r"^\d+\s+[\w-]*\s*stocks?\b",
+        r"\bstocks? to (buy|watch|own|sell)\b",
+        r"\bworth a closer look\b",
+        r"\bbuying opportunity\b",
+        r"\bshould you buy\b",
+        r"\btop \d+\b",
+        r"\bbest (stocks?|etfs?)\b",
+        r"\bmagnificent seven\b",
+        r"\bif you('|’)d invested\b",
+        r"\bprediction:",
+        r"\bhere('|’)s why\b",
+        r"\bmillionaire\b",
+        r"\bno[- ]brainer\b",
+        r"\bmotley fool\b",
+    ]
+]
+
+SOURCE_WEIGHTS = [
+    ("reuters", 1.0),
+    ("bloomberg", 1.0),
+    ("wall street journal", 1.0),
+    ("financial times", 1.0),
+    ("associated press", 0.95),
+    ("cnbc", 0.95),
+    ("marketwatch", 0.9),
+    ("barron", 0.9),
+    ("yahoo finance", 0.85),
+    ("investor's business daily", 0.8),
+    ("investing.com", 0.75),
+    ("benzinga", 0.5),
+    ("zacks", 0.4),
+    ("gurufocus", 0.4),
+    ("24/7 wall st", 0.35),
+    ("insider monkey", 0.3),
+    ("simply wall st", 0.3),
+    ("motley fool", 0.3),
+]
+DEFAULT_SOURCE_WEIGHT = 0.7
+NEWS_DECAY_HALF_LIFE_MINUTES = 90.0
+
+
+def source_weight(source: str) -> float:
+    lowered = clean(source).lower()
+    for key, weight in SOURCE_WEIGHTS:
+        if key in lowered:
+            return weight
+    return DEFAULT_SOURCE_WEIGHT
+
+
+def low_signal_content(title: str) -> bool:
+    lowered = clean(title).lower()
+    return any(pattern.search(lowered) for pattern in LOW_SIGNAL_PATTERNS)
+
+
 def article_key(row: dict[str, Any]) -> str:
-    return (clean(row.get("url")) or clean(row.get("title"))).lower()
+    title = re.sub(r"[^a-z0-9]+", " ", clean(row.get("title")).lower()).strip()
+    return title or clean(row.get("url")).lower()
 
 
 def news_analysis(text: str) -> tuple[float, list[str], list[str], list[str]]:
@@ -404,6 +462,7 @@ def interpret(row: dict[str, Any]) -> dict[str, Any]:
     text = " ".join([clean(row.get("title")), clean(row.get("summary"))])
     sent = sentiment_score(text)
     macro, hits, themes, risk_flags = news_analysis(text)
+    risk_flags = list(risk_flags)
     blended = (macro * 0.85) + (sent * 0.15)
     if blended >= 0.18:
         direction = "bullish"
@@ -412,6 +471,12 @@ def interpret(row: dict[str, Any]) -> dict[str, Any]:
     else:
         direction = "mixed"
     confidence = max(0.10, min(0.92, abs(blended) + min(0.20, len(hits) * 0.03)))
+    weight = source_weight(clean(row.get("source") or row.get("provider")))
+    low_signal = low_signal_content(clean(row.get("title")))
+    if low_signal:
+        weight *= 0.15
+        risk_flags = sorted(set(risk_flags) | {"low_signal_content"})
+    confidence = max(0.05, confidence * weight)
     cats = sorted(set(categories(text)) | set(themes))
     reason_parts = []
     if hits:
@@ -422,6 +487,7 @@ def interpret(row: dict[str, Any]) -> dict[str, Any]:
         reason_parts.append("flags=" + "|".join(risk_flags[:5]))
     reason_parts.append(f"macro={macro:.2f}")
     reason_parts.append(f"sentiment={sent:.2f}")
+    reason_parts.append(f"source_weight={weight:.2f}")
     return {
         **row,
         "sentiment_score": sent,
@@ -450,9 +516,21 @@ def split_field(value: Any) -> list[str]:
     return [part.strip() for part in clean(value).split(";") if part.strip()]
 
 
-def news_bias(rows: list[dict[str, Any]]) -> dict[str, Any]:
+def news_bias(rows: list[dict[str, Any]], now: datetime | None = None) -> dict[str, Any]:
+    now = now or utc_now()
+
+    def decayed_weight(row: dict[str, Any]) -> float:
+        confidence = float(row.get("confidence") or 0.0)
+        published = row.get("published_at")
+        if not isinstance(published, datetime):
+            published = parse_time(published)
+        if isinstance(published, datetime):
+            age_minutes = max(0.0, (now - published).total_seconds() / 60.0)
+            confidence *= 0.5 ** (age_minutes / NEWS_DECAY_HALF_LIFE_MINUTES)
+        return confidence
+
     scored = [row for row in rows if row.get("direction") in {"bullish", "bearish"}]
-    score = sum(float(row.get("confidence") or 0.0) * (1 if row.get("direction") == "bullish" else -1) for row in scored)
+    score = sum(decayed_weight(row) * (1 if row.get("direction") == "bullish" else -1) for row in scored)
     score = max(-1.0, min(1.0, score / max(1, len(scored))))
     if score >= 0.18:
         direction = "bullish"
@@ -479,7 +557,7 @@ def news_bias(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def context_payload(rows: list[dict[str, Any]], now: datetime, valid_minutes: int) -> dict[str, Any]:
-    bias = news_bias(rows)
+    bias = news_bias(rows, now)
     return {
         "items": [
             {
@@ -508,7 +586,7 @@ def summary_payload(
     counts = {"bullish": 0, "bearish": 0, "mixed": 0}
     for row in rows:
         counts[row.get("direction", "mixed")] = counts.get(row.get("direction", "mixed"), 0) + 1
-    bias = news_bias(rows)
+    bias = news_bias(rows, now)
     return {
         "checked_at": iso_z(now),
         "source_used": source_used,

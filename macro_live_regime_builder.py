@@ -116,7 +116,7 @@ def resolve_market_data(args: argparse.Namespace) -> str:
     if args.market_data:
         return args.market_data
     config = load_market_config(args.market_config)
-    return text_value(config.get("active_market_data_file")) or "NQ_5min_data.csv"
+    return text_value(config.get("active_market_data_file")) or "data/NQ_5min_data.csv"
 
 
 def market_tape_component(args: argparse.Namespace, now: datetime) -> list[dict[str, Any]]:

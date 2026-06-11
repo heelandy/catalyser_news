@@ -35,7 +35,7 @@ MATCH_ORDER = [
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Apply separate daily confirmation profiles to live macro signals.")
     p.add_argument("--signals", default="macro_live_signal_adjusted.csv")
-    p.add_argument("--daily-profiles", default="macro_reaction_profiles_investing_daily.csv")
+    p.add_argument("--daily-profiles", default="studies/macro_reaction_profiles_investing_daily.csv")
     p.add_argument("--output", default="macro_live_signal_current.csv")
     p.add_argument("--summary-output", default="macro_daily_confirmation_report.json")
     p.add_argument("--source-label", default="investing_daily_clean")
