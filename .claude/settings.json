@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C \"/c/Users/heela/OneDrive/Área de Trabalho/python nq Catalyst\" log --oneline -20)",
+      "Bash(cd \"/c/Users/heela/OneDrive/Área de Trabalho/python nq Catalyst\" && grep -n \"^## \" README.md | head -40 && ls tests tools extra .claude 2>/dev/null)",
+      "Read(//c/c/Users/heela/OneDrive/Área de Trabalho/python nq Catalyst/**)",
+      "Bash(python -m py_compile macro_pipeline_runner.py macro_news_feed.py)",
+      "Bash(python macro_pipeline_runner.py --dry-run --stop-at 23:59)",
+      "Bash(python macro_pipeline_runner.py --dry-run --stop-at 07:00)",
+      "Bash(python macro_pipeline_runner.py --dry-run --stop-at banana)",
+      "Bash(python -c ' *)",
+      "Bash(python tools/update_dashboard_asset_versions.py --write)",
+      "Bash(node --check dashboard/app.js)",
+      "Bash(python -m pytest tests/ -q)",
+      "Bash(python -m unittest discover -s tests -q)",
+      "PowerShell($files = @\\(\"tools\\\\start_live_pipeline.ps1\", \"tools\\\\stop_live_pipeline.ps1\", \"tools\\\\status_live_pipeline.ps1\", \"tools\\\\setup_schedule.ps1\"\\); foreach \\($f in $files\\) { $errors = $null; [System.Management.Automation.Language.Parser]::ParseFile\\(\\(Resolve-Path $f\\).Path, [ref]$null, [ref]$errors\\) | Out-Null; if \\($errors.Count -gt 0\\) { Write-Output \"$f : $\\($errors[0].Message\\)\" } else { Write-Output \"$f : OK\" } })",
+      "PowerShell(powershell -NoProfile -ExecutionPolicy Bypass -File \"tools\\\\status_live_pipeline.ps1\" | Select-Object -First 6)",
+      "PowerShell(powershell -NoProfile -ExecutionPolicy Bypass -File \"tools\\\\setup_schedule.ps1\")",
+      "PowerShell($edge = \"C:\\\\Program Files \\(x86\\)\\\\Microsoft\\\\Edge\\\\Application\\\\msedge.exe\"; if \\(-not \\(Test-Path $edge\\)\\) { $edge = \"C:\\\\Program Files\\\\Microsoft\\\\Edge\\\\Application\\\\msedge.exe\" }; & $edge --headless --disable-gpu --window-size=640,1100 --screenshot=\"$env:TEMP\\\\nq_popup_preview.png\" \"http://127.0.0.1:8787/dashboard/?popupPreview=1\" 2>$null; Start-Sleep -Seconds 4; Test-Path \"$env:TEMP\\\\nq_popup_preview.png\")",
+      "Read(//c/Users/heela/AppData/Local/Temp/**)",
+      "PowerShell($edge = \"C:\\\\Program Files \\(x86\\)\\\\Microsoft\\\\Edge\\\\Application\\\\msedge.exe\"; if \\(-not \\(Test-Path $edge\\)\\) { $edge = \"C:\\\\Program Files\\\\Microsoft\\\\Edge\\\\Application\\\\msedge.exe\" }; & $edge --headless --disable-gpu --window-size=640,1100 --screenshot=\"$env:TEMP\\\\nq_popup_preview2.png\" \"http://127.0.0.1:8787/dashboard/?popupPreview=1\" 2>$null; Start-Sleep -Seconds 4; Test-Path \"$env:TEMP\\\\nq_popup_preview2.png\")",
+      "Bash(cd \"/c/Users/heela/OneDrive/Área de Trabalho/python nq Catalyst\" && printf '1.0.9\\\\n' > VERSION && echo ok)",
+      "Bash(python tools/update_dashboard_asset_versions.py --check)"
+    ],
+    "additionalDirectories": [
+      "c:\\c\\Users\\heela\\OneDrive\\Área de Trabalho\\python nq Catalyst"
+    ]
+  }
+}

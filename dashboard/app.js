@@ -49,6 +49,8 @@ const state = {
 
 const els = {
   dataStamp: document.querySelector("#dataStamp"),
+  staleBanner: document.querySelector("#staleBanner"),
+  alertPopupLayer: document.querySelector("#alertPopupLayer"),
   reloadBtn: document.querySelector("#reloadBtn"),
   metrics: document.querySelector("#metrics"),
   componentRanges: document.querySelector("#componentRanges"),
@@ -327,6 +329,29 @@ function setDataStamp() {
   els.dataStamp.textContent = `${count} signals, ${statusText}`;
 }
 
+function renderStaleBanner() {
+  const finishedAt = clean(state.status?.finished_at, "");
+  const age = ageSeconds(finishedAt);
+  const loopSeconds = numberValue(state.status?.loop_seconds, 60);
+  const watchMinutes = state.status?.watch_releases ? 35 : 0;
+  const staleThreshold = Math.max(300, loopSeconds * 3 + watchMinutes * 60);
+  const warnings = [];
+
+  if (!state.status) {
+    warnings.push("Pipeline status file could not be loaded. The live runner may not be running.");
+  } else if (!Number.isFinite(age)) {
+    warnings.push("Pipeline status has no finish time yet.");
+  } else if (age > staleThreshold) {
+    warnings.push(`Pipeline data is stale: last cycle finished ${ageLabel(age)}. The live runner may be stopped or outside its 7:00-18:00 window.`);
+  }
+  if (state.status?.failed_stage) {
+    warnings.push(`Last cycle failed: ${clean(state.status.failed_stage)}`);
+  }
+
+  els.staleBanner.hidden = !warnings.length;
+  els.staleBanner.innerHTML = warnings.map((warning) => `<div>${escapeHtml(warning)}</div>`).join("");
+}
+
 function renderMetrics() {
   const total = state.signals.length;
   const waiting = state.signals.filter((row) => row.status === "waiting_actual").length;
@@ -455,6 +480,194 @@ function renderAlerts() {
       }).join("")}
     </div>
   `;
+}
+
+const ALERT_SEEN_KEY = "nqCatalystSeenAlerts";
+const ALERT_POPUP_MAX_AGE_MINUTES = 30;
+const popupState = {
+  queue: [],
+  current: null,
+  seen: loadSeenAlerts(),
+};
+
+function loadSeenAlerts() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(ALERT_SEEN_KEY) || "[]");
+    return new Set(Array.isArray(raw) ? raw : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveSeenAlerts(seen) {
+  try {
+    localStorage.setItem(ALERT_SEEN_KEY, JSON.stringify(Array.from(seen).slice(-200)));
+  } catch {
+    /* storage unavailable; popups may repeat after reload */
+  }
+}
+
+function alertKey(alert) {
+  return [alert.alert_time, alert.alert_type, alert.title].map((part) => clean(part, "")).join("|");
+}
+
+function popupDirection(direction) {
+  if (direction === "bullish") {
+    return { label: "Long", cls: "bullish", arrow: "↗" };
+  }
+  if (direction === "bearish") {
+    return { label: "Short", cls: "bearish", arrow: "↘" };
+  }
+  return { label: "Mixed", cls: "mixed", arrow: "→" };
+}
+
+function popupTile(label, value, direction) {
+  const cls = ["bullish", "bearish"].includes(direction) ? direction : "mixed";
+  return `
+    <div class="popup-tile ${escapeHtml(cls)}">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+    </div>
+  `;
+}
+
+function tradeStateTone(row) {
+  if (!row) {
+    return "mixed";
+  }
+  if (row.regimeConflict !== "none" || row.tradeState.includes("wait")) {
+    return "mixed";
+  }
+  if (row.tradeState.includes("long")) {
+    return "bullish";
+  }
+  if (row.tradeState.includes("short")) {
+    return "bearish";
+  }
+  return "mixed";
+}
+
+function renderAlertPopupCard(alert) {
+  const row = state.signals.find((item) => clean(item.title, "") === clean(alert.title, "")) || null;
+  const direction = clean(alert.current_direction, row?.direction || "mixed").toLowerCase();
+  const dir = popupDirection(direction);
+  const probability = numberValue(alert.current_bullish_probability, row ? row.bull : NaN);
+  const severity = clean(alert.severity, "info").toLowerCase();
+  const severityCls = ["high", "medium", "info"].includes(severity) ? severity : "info";
+  const alertType = titleCase(alert.alert_type, "Pipeline Alert");
+  const title = clean(alert.title, "Pipeline Alert");
+  const category = titleCase(alert.catalyst_category || row?.catalyst_category, "");
+  const message = clean(alert.message, "");
+  const conflict = row ? row.regimeConflict !== "none" : false;
+  const showCaution = conflict || severityCls === "high" || direction === "mixed";
+  const rawCaution = clean(row?.regimeWarning || row?.warningText, "");
+  const cautionDetail = rawCaution && !rawCaution.includes(" ")
+    ? rawCaution.split(";").map((part) => titleCase(part, "")).filter(Boolean).join(" · ")
+    : rawCaution || "Signal is active, but higher-level bias is mixed. Wait for clean confirmation and manage risk.";
+  const releaseRule = row ? displayRuleLabel(row).replace(/^Rule\s+/i, "") : "Unknown";
+  const regime = row ? titleCase(row.regimeDirection) : "Mixed";
+  const tradeState = row ? displayTradeState(row) : "Watch";
+
+  return `
+    <div class="alert-popup-backdrop" data-popup-dismiss="true"></div>
+    <article class="alert-popup ${escapeHtml(dir.cls)}" role="alertdialog" aria-label="New pipeline alert">
+      <header class="alert-popup-top">
+        <div class="alert-popup-id">
+          <span class="popup-direction ${escapeHtml(dir.cls)}">${dir.arrow} ${escapeHtml(dir.label)}</span>
+          <span class="popup-pill">${escapeHtml(alertType)}</span>
+          <div class="alert-popup-chips">
+            ${category && category !== "--" ? `<span class="popup-chip">${escapeHtml(category)}</span>` : ""}
+            <strong class="popup-symbol" title="${escapeHtml(title)}">${escapeHtml(title)}</strong>
+          </div>
+        </div>
+        <div class="alert-popup-price">
+          <span>Bull Probability</span>
+          <strong>${percent(probability, 1)}</strong>
+          <em title="${escapeHtml(formatTimeTitle(alert.release_time))}">${escapeHtml(formatTime(alert.alert_time))}</em>
+        </div>
+      </header>
+      ${showCaution ? `
+        <div class="popup-caution">
+          <strong>Mixed Bias — Use Caution</strong>
+          <span>${escapeHtml(cautionDetail)}</span>
+        </div>
+      ` : ""}
+      ${message ? `<div class="popup-message">${escapeHtml(message)}</div>` : ""}
+      <div class="alert-popup-tiles">
+        ${popupTile("Release Rule", releaseRule, row?.releaseRuleDirection || "mixed")}
+        ${popupTile("Live Regime", regime, row?.regimeDirection || "mixed")}
+        ${popupTile("Trade State", tradeState, tradeStateTone(row))}
+      </div>
+      <footer class="alert-popup-foot">
+        <span class="alert-severity ${escapeHtml(severityCls)}">${escapeHtml(severityCls)}</span>
+        <span class="popup-release">Release ${escapeHtml(formatTime(alert.release_time))}</span>
+        <button class="button popup-dismiss" type="button" data-popup-dismiss="true">Dismiss</button>
+      </footer>
+    </article>
+  `;
+}
+
+function showNextAlertPopup() {
+  const alert = popupState.queue.shift();
+  popupState.current = alert || null;
+  if (!alert) {
+    els.alertPopupLayer.hidden = true;
+    els.alertPopupLayer.innerHTML = "";
+    return;
+  }
+  els.alertPopupLayer.hidden = false;
+  els.alertPopupLayer.innerHTML = renderAlertPopupCard(alert);
+  els.alertPopupLayer.querySelectorAll("[data-popup-dismiss]").forEach((element) => {
+    element.addEventListener("click", showNextAlertPopup);
+  });
+}
+
+function maybeShowAlertPopups() {
+  const summary = state.alertSummary || {};
+  const alerts = Array.isArray(summary.latest_alerts) ? summary.latest_alerts : [];
+  if (new URLSearchParams(window.location.search).has("popupPreview")) {
+    if (alerts.length && !popupState.current) {
+      popupState.queue.push(alerts[alerts.length - 1]);
+      showNextAlertPopup();
+    }
+    return;
+  }
+  const severityRank = { high: 0, medium: 1, info: 2 };
+  const fresh = [];
+  let seenChanged = false;
+
+  alerts.forEach((alert) => {
+    const key = alertKey(alert);
+    if (popupState.seen.has(key)) {
+      return;
+    }
+    popupState.seen.add(key);
+    seenChanged = true;
+    const age = ageSeconds(alert.alert_time);
+    if (Number.isFinite(age) && age <= ALERT_POPUP_MAX_AGE_MINUTES * 60) {
+      fresh.push(alert);
+    }
+  });
+
+  if (seenChanged) {
+    saveSeenAlerts(popupState.seen);
+  }
+  if (!fresh.length) {
+    return;
+  }
+
+  fresh.sort((a, b) => {
+    const bySeverity = (severityRank[clean(a.severity, "info").toLowerCase()] ?? 2)
+      - (severityRank[clean(b.severity, "info").toLowerCase()] ?? 2);
+    if (bySeverity !== 0) {
+      return bySeverity;
+    }
+    return String(b.alert_time || "").localeCompare(String(a.alert_time || ""));
+  });
+  popupState.queue.push(...fresh.slice(0, 6));
+  if (!popupState.current) {
+    showNextAlertPopup();
+  }
 }
 
 function ageSeconds(value) {
@@ -953,6 +1166,7 @@ function renderTrustChart() {
 
 function renderAll() {
   setDataStamp();
+  renderStaleBanner();
   renderMetrics();
   renderComponentRanges();
   renderAlerts();
@@ -994,8 +1208,10 @@ async function loadAll() {
     state.alertSummary = alertSummary;
     state.news = normalizeNews(news);
     state.newsSummary = newsSummary;
-    state.selectedId = state.signals[0]?.id || "";
+    const stillExists = state.signals.some((row) => row.id === state.selectedId);
+    state.selectedId = stillExists ? state.selectedId : (state.signals[0]?.id || "");
     renderAll();
+    maybeShowAlertPopups();
   } catch (error) {
     els.dataStamp.textContent = `Data load failed: ${error.message}`;
     els.signalsBody.innerHTML = '<tr><td colspan="9"><div class="empty">Unable to load dashboard data</div></td></tr>';
@@ -1063,3 +1279,8 @@ function bindEvents() {
 
 bindEvents();
 loadAll();
+setInterval(() => {
+  if (!document.hidden) {
+    loadAll();
+  }
+}, 30000);

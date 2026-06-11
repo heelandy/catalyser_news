@@ -1,58 +1,80 @@
 // This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
 // © heelandy
 // ═══════════════════════════════════════════════════════════════════
-// HIGHSTRIKE ORB V1 — INDICATOR (visual confirmation; mirrors the strategy's signal logic).
-// Plots the Opening Range, the breakout long/short signals, trend EMA, macro/local regime,
-// and (optional) higher-timeframe trend confirmation. Fires alerts. No orders.
-// Signal logic is identical to HIGHSTRIKE_ORB_V1_STRATEGY.pine so what you see == what trades.
+// HIGHSTRIKE ORB — STACK  (PRIMARY production indicator · the unified validated 5m system · NQ/MNQ futures)
+// Merges STRUCTURE (US RTH) + ASIA (Tokyo) + LONDON into ONE file with a SESSION switch (incl. an Auto mode
+// that runs all three OR cycles per trade-day by the clock), plus the two graduated exit/risk upgrades.
+// All three sessions validate on NQ/MNQ 5m: RTH (flagship), Asia (F22), London (F29). Engine upgrades:
+//   • TREND GATE   — TF-adaptive HH/HL swing-STRUCTURE state (st_state) ≤5m, EMA ≥15m   (F20)
+//   • VWAP CAP     — skip breakouts > k·ATR beyond session VWAP (k=2.0)                  (F16)
+//   • STOP         — STRUCTURE-anchored: rest the stop at the last HH/HL swing, not the OR edge.
+//                    Walk-forward graduated (F25b): exp +0.74→+1.00R, ~half the risk per trade.
+//   • EXIT         — TRAIL (ATR chandelier). Walk-forward graduated (F27b): the filtered stack trends
+//                    hard, so let winners run. trail 2ATR = most slip-robust (the NQ/MNQ default).
+//   Together: CUT LOSSES SHORT (structure stop) + LET WINNERS RUN (trail). Scale-to-TP exit kept as an option.
+// ⚠️ FUTURES (NQ1!/MNQ1!): `time("D")` rolls at 18:00 ET (Globex), the trade-day this is built on — so the
+//    Asia session that crosses midnight stays contiguous and the day/OR/once-per-day lock reset correctly.
+// ⚠️ st_state is PORTED from hs_harness.py. RECONCILE (F28) settled offline: the edge is invariant to the
+//    pivot tie-rule (harness 'tv' == strict within noise). Still forward-paper-test fills before sizing (esp. Asia).
 // ═══════════════════════════════════════════════════════════════════
 //@version=6
-indicator("HIGHSTRIKE ORB V1", overlay=true, max_labels_count=300, max_lines_count=300)
+indicator("HIGHSTRIKE ORB — STACK", overlay=true, max_labels_count=300, max_lines_count=300)
 
-// ───────────────────────── INPUTS ─────────────────────────
-long_on  = input.bool(true, "LONG signals",  group="Direction", inline="d")
-short_on = input.bool(true, "SHORT signals", group="Direction", inline="d")
-or_start = input.session("0930-1000", "Opening Range window (ET)", group="ORB")
-sess_tz  = input.string("America/New_York", "Timezone", options=["America/New_York","America/Chicago","Europe/London"], group="ORB")
-trade_end_hhmm = input.int(1500, "Stop new signals after HHMM (ET)", group="ORB", minval=0, maxval=2359,
-                  tooltip="Look ALL DAY (15:00): with stop-entry + EOD-flat, afternoon breakouts are clean too (beats morning-only on exp/PF/win/CI).")
+// ───────────────────────── SESSION ─────────────────────────
+sess_preset = input.string("Asia / Tokyo (1900-2000 ET)", "Session", group="Session",
+              options=["US RTH (0930-1000 ET)", "Asia / Tokyo (1900-2000 ET)", "Auto (Asia + London + RTH by clock)", "Custom"],
+              tooltip="Auto runs all THREE cycles per trade-day by the clock: Asia OR 19:00-20:00 (trade to 03:00), London OR 03:00-03:30 (trade to 08:00), RTH OR 09:30-10:00 (trade to 15:00). One chart covers all sessions.")
+or_custom   = input.session("1900-2000", "Custom OR window (ET)", group="Session")
+cut_custom  = input.int(300, "Custom: stop new signals after HHMM (ET)", group="Session", minval=0, maxval=2359)
+sess_tz     = input.string("America/New_York", "Timezone", options=["America/New_York","America/Chicago","Europe/London"], group="Session")
+// ───────────────────────── DIRECTION / ORB ─────────────────────────
+long_on  = input.bool(true, "LONG",  group="Direction", inline="d")
+short_on = input.bool(true, "SHORT", group="Direction", inline="d")
 brk_buf_atr = input.float(0.10, "Breakout strength (clear OR by x ATR)", group="ORB", step=0.05, minval=0.0)
-auto_tf  = input.bool(true, "Auto config per timeframe", group="ORB",
-            tooltip="Breakout buffer <=5m -> 0.0, else 0.25 ATR. Cutoff 15:00 (all day). OFF = manual.")
-reentry  = input.bool(false, "Allow re-entry (re-break same day)", group="ORB",
-            tooltip="OFF (default) = one signal per side per day (the first break is highest quality). ON = re-arm after price falls back inside the OR, up to N/day. RESEARCH: re-entries DILUTE the edge (QQQ 15m PF 2.11->1.99) — opt-in.")
-max_entries = input.int(2, "Max entries per day (re-entry on)", group="ORB", minval=1, maxval=5)
-trend_ema_f = input.int(21, "Trend EMA fast", group="Trend", minval=2)
-trend_ema_s = input.int(50, "Trend EMA slow", group="Trend", minval=5)
-local_adx_min = input.float(20.0, "Local ADX min (trend)", group="Local Regime", step=1)
-local_atr_hi  = input.float(2.5,  "Volatile ATR%",         group="Local Regime", step=0.25)
-block_range   = input.bool(true,  "Block signals in RANGE regime", group="Local Regime")
-macro_en       = input.bool(true,  "MACRO regime filter ON", group="Macro Regime")
-macro_standdown= input.bool(true,  "Macro stand-down vs SPY trend", group="Macro Regime")
-spy_sym  = input.symbol("SPY",      "Macro trend ref", group="Macro Regime")
-vix_sym  = input.symbol("CBOE:VIX", "Macro vol ref",   group="Macro Regime")
-vix_calm = input.float(15.0, "VIX calm",     group="Macro Regime", step=1)
-vix_vol  = input.float(25.0, "VIX volatile", group="Macro Regime", step=1)
-vix_ext  = input.float(35.0, "VIX extreme",  group="Macro Regime", step=1)
-spy_adx_min = input.float(25.0, "Macro ADX min", group="Macro Regime", step=1)
-persist_n   = input.int(3, "Regime persistence bars", group="Macro Regime", minval=1)
-block_d     = input.bool(true, "Block in REGIME D", group="Macro Regime")
-block_b     = input.bool(true, "Block trend in REGIME B", group="Macro Regime")
-// MTF confirmation (matches the strategy's mtf_min)
-mtf_on   = input.bool(false, "Higher-TF trend confirmation", group="MTF Confirm",
-            tooltip="Require N of {1h, 4h, D} to agree with the breakout (EMA50/200 stack). RESEARCH FINDING: this REDUCES expectancy/PF/win on the ORB (it filters out profitable counter-HTF breakouts) — default OFF. Toggle on to experiment.")
-mtf_min  = input.int(2, "Min higher-TFs that must agree (0-3)", group="MTF Confirm", minval=0, maxval=3)
-sl_buf_atr  = input.float(0.3, "Stop buffer beyond OR x ATR", group="Risk plan", step=0.1)
+auto_tf  = input.bool(true, "Auto breakout buffer per TF", group="ORB", tooltip="≤5m -> 0.0, else 0.25 ATR. OFF = manual.")
+allow_reentry = input.bool(false, "Allow re-entry (re-arm inside OR)", group="ORB",
+            tooltip="OFF = one breakout per side per day (validated default). ON = re-arm when price falls back inside the OR; capped by Max entries.")
+max_entries  = input.int(2, "Max entries per side / day", group="ORB", minval=1)
+// ───────────────────────── STRUCTURE GATE ─────────────────────────
+trend_mode = input.string("Auto (structure <=5m / EMA >=15m)", "Trend gate", group="Structure gate",
+             options=["Auto (structure <=5m / EMA >=15m)", "Structure (HH/HL)", "EMA trend"])
+struct_lb  = input.int(5, "Structure pivot lookback (L=R)", group="Structure gate", minval=2)
+struct_tol = input.float(0.10, "Structure tolerance %", group="Structure gate", step=0.05)
+trend_ema_f = input.int(21, "Trend EMA fast (EMA mode)", group="Structure gate", minval=2)
+trend_ema_s = input.int(50, "Trend EMA slow (EMA mode)", group="Structure gate", minval=5)
+// ───────────────────────── VWAP CAP ─────────────────────────
+cap_on = input.bool(true, "VWAP-extension cap", group="VWAP cap")
+cap_k  = input.float(2.0, "Cap k (xATR beyond VWAP)", group="VWAP cap", step=0.25, minval=0.5)
+// ───────────────────────── REGIME ─────────────────────────
+local_adx_min = input.float(20.0, "Local ADX min", group="Regime", step=1)
+local_atr_hi  = input.float(2.5,  "Volatile ATR%",  group="Regime", step=0.25)
+block_range   = input.bool(true,  "Block RANGE regime", group="Regime")
+macro_en       = input.bool(true,  "MACRO filter ON", group="Regime")
+macro_standdown= input.bool(true,  "Stand-down vs SPY trend", group="Regime")
+spy_sym  = input.symbol("SPY",      "Macro trend ref", group="Regime")
+vix_sym  = input.symbol("CBOE:VIX", "Macro vol ref",   group="Regime")
+vix_calm = input.float(15.0, "VIX calm",     group="Regime", step=1)
+vix_vol  = input.float(25.0, "VIX volatile", group="Regime", step=1)
+vix_ext  = input.float(35.0, "VIX extreme",  group="Regime", step=1)
+spy_adx_min = input.float(25.0, "Macro ADX min", group="Regime", step=1)
+persist_n   = input.int(3, "Regime persistence bars", group="Regime", minval=1)
+block_d     = input.bool(true, "Block REGIME D", group="Regime")
+block_b     = input.bool(true, "Block trend in REGIME B", group="Regime")
+// ───────────────────────── RISK PLAN (the two graduated upgrades) ─────────────────────────
+stop_mode = input.string("Structure swing (HH/HL)", "Stop placement", group="Risk plan",
+            options=["Structure swing (HH/HL)", "OR edge"],
+            tooltip="F25b: resting the stop at the last HH/HL swing (vs the OR edge) ~halves risk per trade and lifts R, walk-forward confirmed.")
+sl_buf_atr  = input.float(0.3, "Stop buffer beyond anchor x ATR", group="Risk plan", step=0.1)
 min_stop_atr= input.float(0.5, "Min stop x ATR", group="Risk plan", step=0.1)
 sl_max_atr  = input.float(2.5, "Max stop x ATR", group="Risk plan", step=0.25)
-tp1_rr      = input.float(1.0, "TP1 R", group="Risk plan", step=0.25)
-tp2_rr      = input.float(4.0, "TP2 R", group="Risk plan", step=0.25)
-show_plan   = input.bool(true, "Show SL / TP1 / TP2 lines", group="Risk plan")
-show_panel  = input.bool(true, "Show position-tool panel (boxes + labels)", group="Risk plan",
-              tooltip="Draws the pending setup like the TV long/short position tool: green target box + red stop box with TP1/TP2/SL/entry labels and R:R.")
-show_mtf    = input.bool(true, "Show 5m + 15m signals (any chart TF)", group="Multi-TF Display",
-              tooltip="Pulls the ORB breakout from the 5m and 15m timeframes so you see them on ANY chart, plus a 5m+15m confluence mark. NOTE: these are RAW breakouts (trend filter only, no macro/regime gates) — confluence awareness, not the gated strategy signal.")
-show_mtf_lvl= input.bool(true, "Show 5m/15m resting levels", group="Multi-TF Display")
+exit_mode = input.string("Trail (ATR chandelier)", "Exit", group="Risk plan",
+            options=["Trail (ATR chandelier)", "Scale 50% @ TP1 → BE → TP2"],
+            tooltip="F27b: a momentum TRAIL beats scale-to-TP on the stack. trail 2ATR = most slip-robust (NQ/MNQ default).")
+trail_atr   = input.float(2.0, "Trail x ATR (chandelier)", group="Risk plan", step=0.5, minval=0.5)
+tp1_rr      = input.float(1.0, "TP1 R (scale mode)", group="Risk plan", step=0.25)
+tp2_rr      = input.float(4.0, "TP2 R (scale mode)", group="Risk plan", step=0.25)
+show_plan   = input.bool(true, "Show stop / target lines", group="Display")
+show_line_labels = input.bool(true, "Write ENTRY / STOP / TP on the chart", group="Display")
 show_dash = input.bool(true, "Show dashboard", group="Display")
 
 // ───────────────────────── CORE ─────────────────────────
@@ -63,26 +85,59 @@ emaF = ta.ema(close, trend_ema_f)
 emaS = ta.ema(close, trend_ema_s)
 bool trend_up   = close > emaS and emaF > emaS
 bool trend_down = close < emaS and emaF < emaS
-int o_now = hour(time, sess_tz) * 60 + minute(time, sess_tz)
-bool new_day = ta.change(time("D")) != 0
-bool rth = (dayofweek != dayofweek.saturday and dayofweek != dayofweek.sunday)
+float vwap_c = ta.vwap
+// TRADE-DAY minutes: 18:00 ET (CME Globex reopen) = 0, so a session crossing midnight stays contiguous.
+int et_min = hour(time, sess_tz) * 60 + minute(time, sess_tz)
+int o_now  = (et_min - 1080 + 1440) % 1440
+bool is_auto = sess_preset == "Auto (Asia + London + RTH by clock)"
+bool phase_rth    = is_auto and o_now >= 930 and o_now < 1260   // 09:30-15:00 ET = RTH cycle
+bool phase_london = is_auto and o_now >= 540 and o_now < 930    // 03:00-09:30 ET = London cycle (open OR at 03:00)
+string or_start = is_auto ? (phase_rth ? "0930-1000" : phase_london ? "0300-0330" : "1900-2000") : sess_preset == "US RTH (0930-1000 ET)" ? "0930-1000" : sess_preset == "Asia / Tokyo (1900-2000 ET)" ? "1900-2000" : or_custom
+int    cut_hhmm = is_auto ? (phase_rth ? 1500 : phase_london ? 800 : 300) : sess_preset == "US RTH (0930-1000 ET)" ? 1500 : sess_preset == "Asia / Tokyo (1900-2000 ET)" ? 300 : cut_custom
+int cut_et = (cut_hhmm / 100) * 60 + (cut_hhmm % 100)
+int trade_end = (cut_et - 1080 + 1440) % 1440
+bool new_day = ta.change(time("D")) != 0                        // CME futures: rolls at 18:00 ET = trade-day start
+int td_dow = dayofweek(time + 6 * 60 * 60 * 1000, sess_tz)      // weekday of the TRADE-day (Sun-eve = Mon)
+bool wkday = td_dow != dayofweek.saturday and td_dow != dayofweek.sunday
 int tf_s = timeframe.in_seconds()
 float eff_brk = auto_tf ? (tf_s <= 300 ? 0.0 : 0.25) : brk_buf_atr
-int   eff_cut_hhmm = auto_tf ? 1500 : trade_end_hhmm
-int trade_end = (eff_cut_hhmm / 100) * 60 + (eff_cut_hhmm % 100)
 
-// ───────────────────────── MTF trend (1h / 4h / D EMA50>200 stack) ─────────────────────────
-f_htf_dir() =>
-    e50 = ta.ema(close, 50)
-    e200 = ta.ema(close, 200)
-    close > e50 and e50 > e200 ? 1 : close < e50 and e50 < e200 ? -1 : 0
-h1 = request.security(syminfo.tickerid, "60",  f_htf_dir(), lookahead=barmerge.lookahead_off)
-h4 = request.security(syminfo.tickerid, "240", f_htf_dir(), lookahead=barmerge.lookahead_off)
-hD = request.security(syminfo.tickerid, "D",   f_htf_dir(), lookahead=barmerge.lookahead_off)
-int mtf_up   = (h1 == 1 ? 1 : 0) + (h4 == 1 ? 1 : 0) + (hD == 1 ? 1 : 0)
-int mtf_down = (h1 == -1 ? 1 : 0) + (h4 == -1 ? 1 : 0) + (hD == -1 ? 1 : 0)
-bool mtf_long_ok  = not mtf_on or mtf_up   >= mtf_min
-bool mtf_short_ok = not mtf_on or mtf_down >= mtf_min
+// ───────────────────────── HH/HL STRUCTURE STATE (port of hs_harness.py; pivot_tie='tv' per F28) ─────────────────────────
+float ph = ta.pivothigh(high, struct_lb, struct_lb)
+float pl = ta.pivotlow(low,  struct_lb, struct_lb)
+var float ph_last = na
+var float ph_prev = na
+var float pl_last = na
+var float pl_prev = na
+var int   st_state = 0
+int st_prev = st_state
+if not na(ph)
+    if na(ph_last) or math.abs(ph - ph_last) / ph_last * 100.0 >= struct_tol
+        ph_prev := ph_last
+        ph_last := ph
+if not na(pl)
+    if na(pl_last) or math.abs(pl - pl_last) / pl_last * 100.0 >= struct_tol
+        pl_prev := pl_last
+        pl_last := pl
+bool s_hh = not na(ph_last) and not na(ph_prev) and ph_last > ph_prev
+bool s_lh = not na(ph_last) and not na(ph_prev) and ph_last < ph_prev
+bool s_hl = not na(pl_last) and not na(pl_prev) and pl_last > pl_prev
+bool s_ll = not na(pl_last) and not na(pl_prev) and pl_last < pl_prev
+if s_hh and s_hl
+    st_state := 1
+else if s_ll and s_lh
+    st_state := 2
+else if (s_hh and s_ll) or (s_hl and s_lh)
+    st_state := 3
+if st_prev == 2 and not na(ph_last) and close > ph_last and close[1] <= ph_last
+    st_state := 0
+if st_prev == 1 and not na(pl_last) and close < pl_last and close[1] >= pl_last
+    st_state := 0
+
+// ───────────────────────── TF-ADAPTIVE TREND GATE ─────────────────────────
+bool use_struct = trend_mode == "Structure (HH/HL)" or (trend_mode == "Auto (structure <=5m / EMA >=15m)" and tf_s <= 300)
+bool eff_up   = use_struct ? (st_state == 1) : trend_up
+bool eff_down = use_struct ? (st_state == 2) : trend_down
 
 // ───────────────────────── MACRO REGIME ─────────────────────────
 spy_b() =>
@@ -121,12 +176,13 @@ bool macro_short_ok = not macro_en or not macro_standdown or not spy_up
 int local_regime = atr_pct >= local_atr_hi ? 3 : adxV >= local_adx_min ? 1 : 2
 bool local_ok = not block_range or local_regime != 2
 
-// ───────────────────────── OPENING RANGE + BREAKOUT ─────────────────────────
+// ───────────────────────── OPENING RANGE ─────────────────────────
 bool in_or = not na(time(timeframe.period, or_start, sess_tz))
+bool reset_now = is_auto ? (in_or and not in_or[1]) : new_day   // auto: reset at each session's OR start (2 cycles/day)
 var float or_high = na
 var float or_low  = na
 var bool  or_set  = false
-if new_day
+if reset_now
     or_high := na
     or_low  := na
     or_set  := false
@@ -135,236 +191,215 @@ if in_or
     or_low  := na(or_low)  ? low  : math.min(or_low,  low)
 if not in_or and not na(or_high)
     or_set := true
-// resting-stop entry levels + full trade plan frozen at OR close; FILL = price TOUCHES the level
 float brk_buf = atr14 * eff_brk
+
+// ───────────────────────── ENTRY + STOP + TARGET LEVELS ─────────────────────────
 var float Le = na
-var float Ls = na
 var float Se = na
-var float Ss = na
 var bool  traded_l = false
 var bool  traded_s = false
-var bool  armed_l = true
-var bool  armed_s = true
-var int   day_n = 0
-if new_day
+var int   n_l = 0
+var int   n_s = 0
+if reset_now
     Le := na
-    Ls := na
     Se := na
-    Ss := na
     traded_l := false
     traded_s := false
-    armed_l := true
-    armed_s := true
-    day_n := 0
+    n_l := 0
+    n_s := 0
 if or_set and na(Le) and not na(or_high) and not na(or_low)
-    Le := or_high + brk_buf
-    Ls := math.min(math.max(or_low  - atr14 * sl_buf_atr, Le - atr14 * sl_max_atr), Le - atr14 * min_stop_atr)
+    Le := or_high + brk_buf                                     // breakout entry levels (frozen at OR close)
     Se := or_low  - brk_buf
-    Ss := math.max(math.min(or_high + atr14 * sl_buf_atr, Se + atr14 * sl_max_atr), Se + atr14 * min_stop_atr)
-float Lt1 = Le + (Le - Ls) * tp1_rr
-float Lt2 = Le + (Le - Ls) * tp2_rr
-float St1 = Se - (Ss - Se) * tp1_rr
-float St2 = Se - (Ss - Se) * tp2_rr
-bool window = or_set and rth and o_now < trade_end and not na(Le)
-bool gate_long  = long_on  and trend_up   and macro_allow and macro_long_ok  and local_ok and mtf_long_ok
-bool gate_short = short_on and trend_down  and macro_allow and macro_short_ok and local_ok and mtf_short_ok
-// re-entry: re-arm once price falls back inside the OR; cap entries/day. OFF => one signal per side.
-if reentry and not na(or_high) and close < or_high
-    armed_l := true
-if reentry and not na(or_low) and close > or_low
-    armed_s := true
-bool ok_l = reentry ? (armed_l and day_n < max_entries) : not traded_l
-bool ok_s = reentry ? (armed_s and day_n < max_entries) : not traded_s
-bool long_fire  = window and ok_l and gate_long  and high >= Le
-bool short_fire = window and ok_s and gate_short and low  <= Se
-if long_fire
-    traded_l := true
-    armed_l := false
-    day_n := day_n + 1
-if short_fire
-    traded_s := true
-    armed_s := false
-    day_n := day_n + 1
+// stop anchor: last HH/HL swing (structure) or the OR edge. Recomputed while ARMED, frozen at fill.
+var bool in_long  = false
+var bool in_short = false
+float anchorL = (stop_mode == "Structure swing (HH/HL)" and not na(pl_last)) ? pl_last : or_low
+float anchorS = (stop_mode == "Structure swing (HH/HL)" and not na(ph_last)) ? ph_last : or_high
+var float Ls = na
+var float Ss = na
+if not na(Le) and not in_long
+    Ls := math.min(math.max(anchorL - atr14 * sl_buf_atr, Le - atr14 * sl_max_atr), Le - atr14 * min_stop_atr)
+if not na(Se) and not in_short
+    Ss := math.max(math.min(anchorS + atr14 * sl_buf_atr, Se + atr14 * sl_max_atr), Se + atr14 * min_stop_atr)
+float Lt1 = na(Le) or na(Ls) ? na : Le + (Le - Ls) * tp1_rr
+float Lt2 = na(Le) or na(Ls) ? na : Le + (Le - Ls) * tp2_rr
+float St1 = na(Se) or na(Ss) ? na : Se - (Ss - Se) * tp1_rr
+float St2 = na(Se) or na(Ss) ? na : Se - (Ss - Se) * tp2_rr
 
-// ───────────────────────── PLOTS + ALERTS ─────────────────────────
+// ───────────────────────── VWAP-EXTENSION CAP ─────────────────────────
+float extL = na(Le) ? na : (Le - vwap_c) / atr14
+float extS = na(Se) ? na : (vwap_c - Se) / atr14
+bool cap_long_ok  = not cap_on or na(extL) or extL <= cap_k
+bool cap_short_ok = not cap_on or na(extS) or extS <= cap_k
+
+// ───────────────────────── GATES + FIRING ─────────────────────────
+// auto guard: 18:00-19:00 ET (trade-day start, pre-Asia-OR) still carries yesterday's RTH levels — no signals there
+bool stale_gap = is_auto and o_now < 60
+bool window = or_set and wkday and o_now < trade_end and not na(Le) and not stale_gap
+bool gate_long  = long_on  and eff_up   and macro_allow and macro_long_ok  and local_ok
+bool gate_short = short_on and eff_down  and macro_allow and macro_short_ok and local_ok
+if allow_reentry and traded_l and not na(or_high) and close < or_high and n_l < max_entries
+    traded_l := false
+if allow_reentry and traded_s and not na(or_low) and close > or_low and n_s < max_entries
+    traded_s := false
+bool sig_l = window and not traded_l and gate_long  and high >= Le
+bool sig_s = window and not traded_s and gate_short and low  <= Se
+bool long_fire  = sig_l and cap_long_ok
+bool short_fire = sig_s and cap_short_ok
+bool long_skip  = sig_l and not cap_long_ok
+bool short_skip = sig_s and not cap_short_ok
+if sig_l
+    traded_l := true
+    n_l += 1
+if sig_s
+    traded_s := true
+    n_s += 1
+
+// ───────────────────────── POSITION MANAGEMENT (working stop: trail OR scale-to-BE) ─────────────────────────
+bool is_trail = exit_mode == "Trail (ATR chandelier)"
+var float lstop = na          // long working stop (initial -> trails / -> BE)
+var float sstop = na
+var bool  l_tp1 = false
+var bool  s_tp1 = false
+if reset_now
+    in_long := false
+    in_short := false
+    lstop := na
+    sstop := na
+    l_tp1 := false
+    s_tp1 := false
+if long_fire
+    in_long := true
+    lstop := Ls
+    l_tp1 := false
+if short_fire
+    in_short := true
+    sstop := Ss
+    s_tp1 := false
+if in_long
+    if is_trail
+        lstop := math.max(lstop, close - trail_atr * atr14)            // chandelier ratchet
+    else
+        if not l_tp1 and high >= Lt1
+            l_tp1 := true
+            lstop := Le                                                // stop to break-even after TP1
+    if low <= lstop or (not is_trail and high >= Lt2)
+        in_long := false
+if in_short
+    if is_trail
+        sstop := math.min(sstop, close + trail_atr * atr14)
+    else
+        if not s_tp1 and low <= St1
+            s_tp1 := true
+            sstop := Se
+    if high >= sstop or (not is_trail and low <= St2)
+        in_short := false
+if is_auto and o_now >= trade_end                              // auto: flatten the displayed trade at the session cutoff
+    in_long := false
+    in_short := false
+bool l_live = (window and not traded_l and gate_long) or in_long
+bool s_live = (window and not traded_s and gate_short) or in_short
+float l_stop_now = in_long ? lstop : Ls                                // the stop to SHOW (planned while armed, working once live)
+float s_stop_now = in_short ? sstop : Ss
+
+// ───────────────────────── PLOTS ─────────────────────────
 plot(or_set ? or_high : na, "OR high", color=color.new(color.aqua, 55),   style=plot.style_linebr)
 plot(or_set ? or_low  : na, "OR low",  color=color.new(color.orange, 55), style=plot.style_linebr)
-// RESTING ENTRY LEVELS — where the buy-stop / sell-stop is waiting (visible as a price line)
-plot(window and not traded_l ? Le : na, "Long entry (buy-stop)",   color=color.new(color.lime, 0), style=plot.style_linebr, linewidth=2)
-plot(window and not traded_s ? Se : na, "Short entry (sell-stop)", color=color.new(color.red, 0),  style=plot.style_linebr, linewidth=2)
-// FULL TRADE PLAN — stop-loss + TP1 + TP2 for the live setup
-bool lplan = show_plan and window and not traded_l
-bool splan = show_plan and window and not traded_s
-plot(lplan ? Ls  : na, "Long SL",   color=color.new(color.red,   25), style=plot.style_linebr)
-plot(lplan ? Lt1 : na, "Long TP1",  color=color.new(color.teal,  20), style=plot.style_linebr)
-plot(lplan ? Lt2 : na, "Long TP2",  color=color.new(color.green, 10), style=plot.style_linebr)
-plot(splan ? Ss  : na, "Short SL",  color=color.new(color.red,   25), style=plot.style_linebr)
-plot(splan ? St1 : na, "Short TP1", color=color.new(color.teal,  20), style=plot.style_linebr)
-plot(splan ? St2 : na, "Short TP2", color=color.new(color.green, 10), style=plot.style_linebr)
-plot(emaS, "EMA slow", color=trend_up ? color.new(color.lime,50) : trend_down ? color.new(color.red,50) : color.new(color.gray,60))
+plot(l_live ? Le : na, "Long entry",  color=color.new(color.yellow, 0), style=plot.style_linebr, linewidth=2)
+plot(s_live ? Se : na, "Short entry", color=color.new(color.yellow, 0), style=plot.style_linebr, linewidth=2)
+bool lp = show_plan and l_live
+bool sp = show_plan and s_live
+plot(lp ? l_stop_now : na, "Long stop",  color=color.new(color.red, 15), style=plot.style_linebr, linewidth=2)
+plot(sp ? s_stop_now : na, "Short stop", color=color.new(color.red, 15), style=plot.style_linebr, linewidth=2)
+plot(lp and not is_trail ? Lt1 : na, "Long TP1",  color=color.new(color.teal,  20), style=plot.style_linebr)
+plot(lp and not is_trail ? Lt2 : na, "Long TP2",  color=color.new(color.green, 10), style=plot.style_linebr)
+plot(sp and not is_trail ? St1 : na, "Short TP1", color=color.new(color.teal,  20), style=plot.style_linebr)
+plot(sp and not is_trail ? St2 : na, "Short TP2", color=color.new(color.green, 10), style=plot.style_linebr)
 plotshape(long_fire,  "Long fill",  shape.triangleup,   location.belowbar, color.new(color.lime, 0), text="FILL", textcolor=color.white, size=size.small)
 plotshape(short_fire, "Short fill", shape.triangledown, location.abovebar, color.new(color.red, 0),  text="FILL", textcolor=color.white, size=size.small)
+plotshape(long_skip,  "Long capped",  shape.xcross, location.belowbar, color.new(color.gray, 0), text="EXT", textcolor=color.gray, size=size.tiny)
+plotshape(short_skip, "Short capped", shape.xcross, location.abovebar, color.new(color.gray, 0), text="EXT", textcolor=color.gray, size=size.tiny)
 bgcolor(macro_en and regime == "D" ? color.new(color.red, 90) : na)
 bgcolor(block_range and local_regime == 2 ? color.new(color.gray, 92) : na)
-alertcondition(long_fire,  "ORB Long",  "HIGHSTRIKE ORB: LONG breakout confirmed")
-alertcondition(short_fire, "ORB Short", "HIGHSTRIKE ORB: SHORT breakout confirmed")
+alertcondition(long_fire,  "STACK Long",  "HIGHSTRIKE STACK: LONG breakout (gated + near-VWAP)")
+alertcondition(short_fire, "STACK Short", "HIGHSTRIKE STACK: SHORT breakout (gated + near-VWAP)")
 
-// ───────────────────────── MULTI-TF SIGNALS (5m + 15m, on ANY chart TF) ─────────────────────────
-// raw OR breakout (trend filter only; no macro/regime — nested security not allowed) pulled per-TF
-orb_break() =>
-    var float orh = na
-    var float orl = na
-    var bool  orset = false
-    var float lvl_l = na
-    var float lvl_s = na
-    var bool  ldone = false
-    var bool  sdone = false
-    nd = ta.change(time("D")) != 0
-    if nd
-        orh := na
-        orl := na
-        orset := false
-        lvl_l := na
-        lvl_s := na
-        ldone := false
-        sdone := false
-    inor = not na(time(timeframe.period, or_start, sess_tz))
-    if inor
-        orh := na(orh) ? high : math.max(orh, high)
-        orl := na(orl) ? low  : math.min(orl, low)
-    if not inor and not na(orh)
-        orset := true
-    a  = ta.atr(14)
-    ef = ta.ema(close, 21)
-    es = ta.ema(close, 50)
-    tup = close > es and ef > es
-    tdn = close < es and ef < es
-    onow2 = hour(time, sess_tz) * 60 + minute(time, sess_tz)
-    tfs = timeframe.in_seconds()
-    tod2 = 900                                   // look all day (15:00 ET)
-    buf = a * (tfs <= 300 ? 0.0 : 0.25)
-    if orset and na(lvl_l) and not na(orh)
-        lvl_l := orh + buf
-        lvl_s := orl - buf
-    aft = orset and onow2 < tod2 and not na(lvl_l)
-    lsg = aft and not ldone and high >= lvl_l and tup
-    ssg = aft and not sdone and low  <= lvl_s and tdn
-    if lsg
-        ldone := true
-    if ssg
-        sdone := true
-    [lsg ? 1 : 0, ssg ? 1 : 0, (aft and not ldone ? lvl_l : na), (aft and not sdone ? lvl_s : na)]
+// ───────────────────────── FLOATING ENTRY / STOP / TP LABELS ─────────────────────────
+f_setlbl(lbl, cond, price, txt, col) =>
+    label out = lbl
+    if cond and not na(price)
+        if na(out)
+            out := label.new(bar_index + 2, price, txt, style=label.style_label_left, color=col, textcolor=color.white, size=size.small)
+        label.set_xy(out, bar_index + 2, price)
+        label.set_text(out, txt)
+        label.set_color(out, col)
+    else if not na(out)
+        label.delete(out)
+        out := na
+    out
+var label lbl_Le = na
+var label lbl_Ls = na
+var label lbl_Lt1 = na
+var label lbl_Lt2 = na
+var label lbl_Se = na
+var label lbl_Ss = na
+var label lbl_St1 = na
+var label lbl_St2 = na
+if barstate.islast and show_line_labels
+    string r1 = str.tostring(tp1_rr, "#.#")
+    string r2 = str.tostring(tp2_rr, "#.#")
+    string lstoptxt = in_long ? (is_trail ? "TRAIL STOP " : "STOP ") : "STOP "
+    string sstoptxt = in_short ? (is_trail ? "TRAIL STOP " : "STOP ") : "STOP "
+    lbl_Le  := f_setlbl(lbl_Le,  l_live, Le, "▲ ENTRY " + str.tostring(Le, format.mintick), color.new(color.yellow, 0))
+    lbl_Ls  := f_setlbl(lbl_Ls,  lp,     l_stop_now, lstoptxt + str.tostring(l_stop_now, format.mintick), color.new(color.red, 0))
+    lbl_Lt1 := f_setlbl(lbl_Lt1, lp and not is_trail, Lt1, "TP1 " + str.tostring(Lt1, format.mintick) + "  +" + r1 + "R", color.new(color.teal, 0))
+    lbl_Lt2 := f_setlbl(lbl_Lt2, lp and not is_trail, Lt2, "TP2 " + str.tostring(Lt2, format.mintick) + "  +" + r2 + "R", color.new(color.green, 0))
+    lbl_Se  := f_setlbl(lbl_Se,  s_live, Se, "▼ ENTRY " + str.tostring(Se, format.mintick), color.new(color.yellow, 0))
+    lbl_Ss  := f_setlbl(lbl_Ss,  sp,     s_stop_now, sstoptxt + str.tostring(s_stop_now, format.mintick), color.new(color.red, 0))
+    lbl_St1 := f_setlbl(lbl_St1, sp and not is_trail, St1, "TP1 " + str.tostring(St1, format.mintick) + "  +" + r1 + "R", color.new(color.teal, 0))
+    lbl_St2 := f_setlbl(lbl_St2, sp and not is_trail, St2, "TP2 " + str.tostring(St2, format.mintick) + "  +" + r2 + "R", color.new(color.green, 0))
 
-[m5l, m5s, m5lL, m5sL]     = request.security(syminfo.tickerid, "5",  orb_break(), lookahead=barmerge.lookahead_off)
-[m15l, m15s, m15lL, m15sL] = request.security(syminfo.tickerid, "15", orb_break(), lookahead=barmerge.lookahead_off)
-plot(show_mtf and show_mtf_lvl ? m5lL  : na, "MTF 5m long lvl",   color=color.new(color.lime, 35), style=plot.style_linebr)
-plot(show_mtf and show_mtf_lvl ? m5sL  : na, "MTF 5m short lvl",  color=color.new(color.red, 35),  style=plot.style_linebr)
-plot(show_mtf and show_mtf_lvl ? m15lL : na, "MTF 15m long lvl",  color=color.new(color.lime, 70), style=plot.style_linebr)
-plot(show_mtf and show_mtf_lvl ? m15sL : na, "MTF 15m short lvl", color=color.new(color.red, 70),  style=plot.style_linebr)
-plotshape(show_mtf and m5l  == 1, "5m long",  shape.triangleup,   location.belowbar, color.new(color.teal, 20),   text="5m",  textcolor=color.teal,   size=size.tiny)
-plotshape(show_mtf and m5s  == 1, "5m short", shape.triangledown, location.abovebar, color.new(color.maroon, 20), text="5m",  textcolor=color.maroon, size=size.tiny)
-plotshape(show_mtf and m15l == 1, "15m long", shape.triangleup,   location.belowbar, color.new(color.lime, 0),    text="15m", textcolor=color.lime,   size=size.tiny)
-plotshape(show_mtf and m15s == 1, "15m short",shape.triangledown, location.abovebar, color.new(color.red, 0),     text="15m", textcolor=color.red,    size=size.tiny)
-var bool m5ld = false
-var bool m5sd = false
-var bool m15ld = false
-var bool m15sd = false
-var bool lcdone = false
-var bool scdone = false
-if ta.change(time("D")) != 0
-    m5ld := false
-    m5sd := false
-    m15ld := false
-    m15sd := false
-    lcdone := false
-    scdone := false
-if m5l == 1
-    m5ld := true
-if m5s == 1
-    m5sd := true
-if m15l == 1
-    m15ld := true
-if m15s == 1
-    m15sd := true
-bool Lconf = show_mtf and not lcdone and m5ld and m15ld
-bool Sconf = show_mtf and not scdone and m5sd and m15sd
-if Lconf
-    lcdone := true
-if Sconf
-    scdone := true
-plotshape(Lconf, "5m+15m LONG confluence",  shape.labelup,   location.belowbar, color.new(color.lime, 0), text="5+15↑", textcolor=color.black, size=size.small)
-plotshape(Sconf, "5m+15m SHORT confluence", shape.labeldown, location.abovebar, color.new(color.red, 0),  text="5+15↓", textcolor=color.white, size=size.small)
-alertcondition(Lconf, "5m+15m LONG confluence",  "HIGHSTRIKE ORB: 5m+15m LONG confluence")
-alertcondition(Sconf, "5m+15m SHORT confluence", "HIGHSTRIKE ORB: 5m+15m SHORT confluence")
-
-var table dash = table.new(position.top_right, 2, 6, bgcolor=color.new(color.black, 70), frame_color=color.gray, frame_width=1)
+// ───────────────────────── DASHBOARD (MTF style, with ENTRY + STOP) ─────────────────────────
+f_q(x)  => na(x) ? "—" : x <= cap_k ? "NEAR ✓" : "EXT ⚠"
+f_qc(x) => na(x) ? color.gray : x <= cap_k ? color.lime : color.orange
+f_st(s) => s == 1 ? "UP (HH+HL)" : s == 2 ? "DOWN (LL+LH)" : s == 3 ? "RANGE" : "—"
+var table dash = table.new(position.top_right, 2, 13, bgcolor=color.new(color.black, 70), frame_color=color.gray, frame_width=1)
 if barstate.islast and show_dash
-    table.cell(dash,0,0,"HIGHSTRIKE ORB", text_color=color.yellow, text_size=size.small)
-    table.cell(dash,1,0, str.tostring(syminfo.ticker)+" "+timeframe.period, text_color=color.silver, text_size=size.small)
-    table.cell(dash,0,1,"Regime", text_color=color.silver, text_size=size.tiny)
-    table.cell(dash,1,1, regime+(spy_up?" SPY↑":spy_dn?" SPY↓":""), text_color=regime=="A"?color.lime:regime=="D"?color.red:color.aqua, text_size=size.tiny)
-    table.cell(dash,0,2,"Trend", text_color=color.silver, text_size=size.tiny)
-    table.cell(dash,1,2, trend_up?"UP":trend_down?"DOWN":"flat", text_color=trend_up?color.lime:trend_down?color.red:color.gray, text_size=size.tiny)
-    table.cell(dash,0,3,"Local", text_color=color.silver, text_size=size.tiny)
-    table.cell(dash,1,3, local_regime==1?"TREND":local_regime==2?"RANGE":"VOL", text_color=local_ok?color.lime:color.orange, text_size=size.tiny)
-    table.cell(dash,0,4,"HTF trend", text_color=color.silver, text_size=size.tiny)
-    table.cell(dash,1,4, "↑"+str.tostring(mtf_up)+" ↓"+str.tostring(mtf_down)+"/3  | 5m"+(m5ld?"↑":m5sd?"↓":"-")+" 15m"+(m15ld?"↑":m15sd?"↓":"-"), text_color=color.aqua, text_size=size.tiny)
-    table.cell(dash,0,5,"OR", text_color=color.silver, text_size=size.tiny)
-    table.cell(dash,1,5, or_set?(str.tostring(or_low,"#.#")+"/"+str.tostring(or_high,"#.#")):"forming", text_color=color.aqua, text_size=size.tiny)
-
-// ───────────────────────── POSITION-TOOL PANEL (labeled SL/TP boxes, like the TV long/short tool) ─────────────────────────
-bool panel_long  = show_panel and show_plan and window and not traded_l and gate_long
-bool panel_short = show_panel and show_plan and window and not traded_s and gate_short
-var box   pbx_g = na
-var box   pbx_r = na
-var label plb_e  = na
-var label plb_t1 = na
-var label plb_t2 = na
-var label plb_sl = na
-if barstate.islast
-    bool any = panel_long or panel_short
-    float pe  = panel_long ? Le  : panel_short ? Se  : na
-    float psl = panel_long ? Ls  : panel_short ? Ss  : na
-    float pt1 = panel_long ? Lt1 : panel_short ? St1 : na
-    float pt2 = panel_long ? Lt2 : panel_short ? St2 : na
-    string etx = panel_long ? "Stop-entry BUY" : panel_short ? "Stop-entry SELL" : ""
-    int x1 = bar_index - 5
-    int x2 = bar_index + 12
-    if any and not na(pe) and not na(psl) and not na(pt2)
-        float rr = math.abs(pe - psl) > 0 ? math.abs(pt2 - pe) / math.abs(pe - psl) : 0.0
-        if na(pbx_g)
-            pbx_g  := box.new(x1, pe, x2, pe, border_color=color.new(color.teal, 50), bgcolor=color.new(color.teal, 88))
-            pbx_r  := box.new(x1, pe, x2, pe, border_color=color.new(color.red, 50),  bgcolor=color.new(color.red, 90))
-            plb_e  := label.new(x2, pe,  "", style=label.style_label_left, color=color.new(color.gray, 20), textcolor=color.white, size=size.small)
-            plb_t1 := label.new(x2, pt1, "", style=label.style_label_left, color=color.new(color.teal, 10), textcolor=color.white, size=size.small)
-            plb_t2 := label.new(x2, pt2, "", style=label.style_label_left, color=color.new(color.green, 0), textcolor=color.white, size=size.small)
-            plb_sl := label.new(x2, psl, "", style=label.style_label_left, color=color.new(color.red, 0),   textcolor=color.white, size=size.small)
-        box.set_top(pbx_g, math.max(pe, pt2))
-        box.set_bottom(pbx_g, math.min(pe, pt2))
-        box.set_left(pbx_g, x1)
-        box.set_right(pbx_g, x2)
-        box.set_top(pbx_r, math.max(pe, psl))
-        box.set_bottom(pbx_r, math.min(pe, psl))
-        box.set_left(pbx_r, x1)
-        box.set_right(pbx_r, x2)
-        label.set_xy(plb_e, x2, pe)
-        label.set_text(plb_e, etx + "  " + str.tostring(pe, format.mintick))
-        label.set_xy(plb_t1, x2, pt1)
-        label.set_text(plb_t1, "TP1  " + str.tostring(pt1, format.mintick) + "  +" + str.tostring(tp1_rr, "#.#") + "R")
-        label.set_xy(plb_t2, x2, pt2)
-        label.set_text(plb_t2, "TP2  " + str.tostring(pt2, format.mintick) + "  +" + str.tostring(tp2_rr, "#.#") + "R   |  R:R " + str.tostring(rr, "#.##"))
-        label.set_xy(plb_sl, x2, psl)
-        label.set_text(plb_sl, "SL  " + str.tostring(psl, format.mintick) + "  -1R")
-    if not any and not na(pbx_g)
-        box.delete(pbx_g)
-        box.delete(pbx_r)
-        label.delete(plb_e)
-        label.delete(plb_t1)
-        label.delete(plb_t2)
-        label.delete(plb_sl)
-        pbx_g  := na
-        pbx_r  := na
-        plb_e  := na
-        plb_t1 := na
-        plb_t2 := na
-        plb_sl := na
+    int dirn = l_live ? 1 : s_live ? -1 : 0
+    float e_ = dirn == 1 ? Le : dirn == -1 ? Se : na
+    float st_ = dirn == 1 ? l_stop_now : dirn == -1 ? s_stop_now : na
+    float x_ = dirn == 1 ? extL : dirn == -1 ? extS : na
+    bool   filled = in_long or in_short
+    bool   armed  = (l_live or s_live) and not filled
+    string stat   = filled ? "FILLED ✓" : armed ? "ARMED ◷" : "flat —"
+    color  statc  = filled ? color.lime : armed ? color.aqua : color.gray
+    string greason = not macro_allow ? ("BLOCK " + regime) : not local_ok ? "RANGE (flat)" : (dirn == 1 and not macro_long_ok) ? "SPY↓ vs long" : (dirn == -1 and not macro_short_ok) ? "SPY↑ vs short" : "clear ✓"
+    color  gcol    = greason == "clear ✓" ? color.lime : color.orange
+    string sess_lbl = is_auto ? ("Auto: " + (phase_rth ? "RTH" : phase_london ? "London" : "Asia")) : sess_preset == "US RTH (0930-1000 ET)" ? "RTH" : sess_preset == "Asia / Tokyo (1900-2000 ET)" ? "Asia" : "Custom"
+    string tgt = is_trail ? ("trail " + str.tostring(trail_atr, "#.#") + "ATR (ride)") : (dirn == 1 ? str.tostring(Lt2, "#.#") : dirn == -1 ? str.tostring(St2, "#.#") : "—")
+    table.cell(dash,0,0,"HIGHSTRIKE STACK", text_color=color.yellow, text_size=size.small)
+    table.cell(dash,1,0, str.tostring(syminfo.ticker)+"  "+timeframe.period, text_color=color.silver, text_size=size.small)
+    table.cell(dash,0,1,"Session", text_color=color.silver, text_size=size.tiny)
+    table.cell(dash,1,1, sess_lbl + "  " + or_start + " ET", text_color=color.aqua, text_size=size.tiny)
+    table.cell(dash,0,2,"Regime", text_color=color.silver, text_size=size.tiny)
+    table.cell(dash,1,2, regime+(spy_up?" SPY↑":spy_dn?" SPY↓":""), text_color=regime=="A"?color.lime:regime=="D"?color.red:color.aqua, text_size=size.tiny)
+    table.cell(dash,0,3,"Trend gate", text_color=color.silver, text_size=size.tiny)
+    table.cell(dash,1,3, (use_struct?"STRUCT: "+f_st(st_state):"EMA: "+(trend_up?"UP":trend_down?"DOWN":"flat")), text_color=(eff_up?color.lime:eff_down?color.red:color.gray), text_size=size.tiny)
+    table.cell(dash,0,4,"Setup", text_color=color.silver, text_size=size.tiny)
+    table.cell(dash,1,4, dirn==1?"LONG":dirn==-1?"SHORT":"—", text_color=dirn==1?color.lime:dirn==-1?color.red:color.gray, text_size=size.tiny)
+    table.cell(dash,0,5,"Status", text_color=color.silver, text_size=size.tiny)
+    table.cell(dash,1,5, stat + (allow_reentry ? ("  (" + str.tostring(dirn==1?n_l:dirn==-1?n_s:0) + "/" + str.tostring(max_entries) + ")") : ""), text_color=statc, text_size=size.tiny)
+    table.cell(dash,0,6,"Entry", text_color=color.silver, text_size=size.tiny)
+    table.cell(dash,1,6, na(e_)?"—":str.tostring(e_, format.mintick), text_color=color.yellow, text_size=size.tiny)
+    table.cell(dash,0,7,"Stop loss", text_color=color.silver, text_size=size.tiny)
+    table.cell(dash,1,7, na(st_)?"—":str.tostring(st_, format.mintick)+(filled and is_trail?"  (trail)":""), text_color=color.red, text_size=size.tiny)
+    table.cell(dash,0,8,"Target", text_color=color.silver, text_size=size.tiny)
+    table.cell(dash,1,8, tgt, text_color=color.teal, text_size=size.tiny)
+    table.cell(dash,0,9,"Gated", text_color=color.silver, text_size=size.tiny)
+    table.cell(dash,1,9, greason, text_color=gcol, text_size=size.tiny)
+    table.cell(dash,0,10,"VWAP cap", text_color=color.silver, text_size=size.tiny)
+    table.cell(dash,1,10, f_q(x_)+(na(x_)?"":"  "+str.tostring(x_,"#.#")+"x  k="+str.tostring(cap_k,"#.#")), text_color=f_qc(x_), text_size=size.tiny)
+    table.cell(dash,0,11,"OR / VWAP", text_color=color.silver, text_size=size.tiny)
+    table.cell(dash,1,11, (or_set?(str.tostring(or_low,"#.#")+" / "+str.tostring(or_high,"#.#")):"forming")+"  ·  "+str.tostring(vwap_c,"#.#"), text_color=color.aqua, text_size=size.tiny)
+    table.cell(dash,0,12,"NEAR/EXT", text_color=color.gray, text_size=size.tiny)
+    table.cell(dash,1,12, "= dist from VWAP (xATR)", text_color=color.gray, text_size=size.tiny)

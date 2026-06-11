@@ -18,6 +18,23 @@ class DashboardContractTests(unittest.TestCase):
         self.assertIn(".news-warning", styles)
         self.assertIn(".news-meta", styles)
 
+    def test_dashboard_alert_popup_contract(self):
+        html = (ROOT / "dashboard" / "index.html").read_text(encoding="utf-8")
+        app = (ROOT / "dashboard" / "app.js").read_text(encoding="utf-8")
+        styles = (ROOT / "dashboard" / "styles.css").read_text(encoding="utf-8")
+
+        self.assertIn("alertPopupLayer", html)
+        self.assertIn("staleBanner", html)
+        self.assertIn("maybeShowAlertPopups", app)
+        self.assertIn("renderAlertPopupCard", app)
+        self.assertIn("renderStaleBanner", app)
+        self.assertIn("Mixed Bias — Use Caution", app)
+        self.assertIn("setInterval", app)
+        self.assertIn(".alert-popup", styles)
+        self.assertIn(".popup-tile", styles)
+        self.assertIn(".popup-caution", styles)
+        self.assertIn(".stale-banner", styles)
+
     def test_dashboard_asset_versions_are_present(self):
         html = (ROOT / "dashboard" / "index.html").read_text(encoding="utf-8")
 

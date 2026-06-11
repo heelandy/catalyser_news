@@ -1,15 +1,22 @@
 // This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
 // © heelandy
 // ═══════════════════════════════════════════════════════════════════
-// HIGHSTRIKE ORB — OPTIONS (SPY / QQQ). Translates the SAME gated ORB signal as the V1 strategy/
-// indicator into option structures: buy call/put, debit (vertical) spread, credit (vertical) spread.
-// STRIKES ARE DERIVED FROM THE ORB LEVELS — the breakout level is the ATM, the target caps the debit
-// spread, the stop is the short leg of the credit spread (your cushion). Shown in a clean dashboard
-// so it does NOT overload the V1 indicator's SL/TP/MTF visuals.
-//
+// HIGHSTRIKE ORB — OPTIONS  (SPY / QQQ · US RTH only · 0DTE entry, max 4-DTE hold)
+// Translates the validated STACK signal (same engine as HIGHSTRIKE_ORB_STACK: HH/HL structure gate +
+// VWAP cap + structure stop + ATR trail) into option structures on the RTH opening range:
+//   • NAKED BUY  — long call (long bias) / long put (short bias), BUY ONLY, never naked short.
+//                  Strike = 1-2 ITM / ATM / 1-2 OTM (input; 1 ITM default = delta that tracks the move).
+//   • DEBIT  spread — long the chosen strike, short the strike at TP1 (cheapens entry, caps at target).
+//   • CREDIT spread — defined-risk vertical on the OTHER side: short strike at the STRUCTURE STOP
+//                  (price has to break the stop to hurt it), long protection 1 width beyond.
+//   • EXPIRY — 0DTE for same-day momentum; if holding, the FURTHEST allowed expiry is +4 trading
+//                  days (dashboard shows both dates). Exit the moment the underlying crosses the trail.
+// SCOPE: SPY + QQQ for now (dashboard warns elsewhere) — expand later. RTH only (options session).
+// ⚠️ The validated underlying edge is INTRADAY (EOD-flat). 0DTE = the researched profile. Holding a
+//    spread to ≤4 DTE is an options-layer allowance (defined-risk carries the gap), NOT separately
+//    backtested — prefer 0DTE on naked longs (theta) and reserve multi-day holds for spreads.
 // LIMITATION: Pine has NO options-chain / IV / premium / Greeks access. This outputs STRIKES +
-// STRUCTURE + THESIS only — price the actual contracts (premium, breakeven, Greeks) at your broker.
-// Same signal core as HIGHSTRIKE_ORB_V1_INDICATOR.pine (MTF gate omitted = its default-off state).
+// STRUCTURE + THESIS only — price the contracts at the broker before entering.
 // ═══════════════════════════════════════════════════════════════════
 //@version=6
 indicator("HIGHSTRIKE ORB Options", overlay=true, max_labels_count=100)
@@ -21,34 +28,57 @@ or_start = input.session("0930-1000", "Opening Range window (ET)", group="ORB")
 sess_tz  = input.string("America/New_York", "Timezone", options=["America/New_York","America/Chicago","Europe/London"], group="ORB")
 trade_end_hhmm = input.int(1500, "Stop new signals after HHMM (ET)", group="ORB", minval=0, maxval=2359)
 brk_buf_atr = input.float(0.10, "Breakout strength (clear OR by x ATR)", group="ORB", step=0.05, minval=0.0)
-auto_tf  = input.bool(true, "Auto config per timeframe", group="ORB",
-            tooltip="Breakout buffer <=5m -> 0.0, else 0.25 ATR. Cutoff 15:00 (all day). OFF = manual.")
-trend_ema_f = input.int(21, "Trend EMA fast", group="Trend", minval=2)
-trend_ema_s = input.int(50, "Trend EMA slow", group="Trend", minval=5)
-local_adx_min = input.float(20.0, "Local ADX min (trend)", group="Local Regime", step=1)
-local_atr_hi  = input.float(2.5,  "Volatile ATR%",         group="Local Regime", step=0.25)
-block_range   = input.bool(true,  "Block signals in RANGE regime", group="Local Regime")
-macro_en       = input.bool(true,  "MACRO regime filter ON", group="Macro Regime")
-macro_standdown= input.bool(true,  "Macro stand-down vs SPY trend", group="Macro Regime")
-spy_sym  = input.symbol("SPY",      "Macro trend ref", group="Macro Regime")
-vix_sym  = input.symbol("CBOE:VIX", "Macro vol ref",   group="Macro Regime")
-vix_calm = input.float(15.0, "VIX calm",     group="Macro Regime", step=1)
-vix_vol  = input.float(25.0, "VIX volatile", group="Macro Regime", step=1)
-vix_ext  = input.float(35.0, "VIX extreme",  group="Macro Regime", step=1)
-spy_adx_min = input.float(25.0, "Macro ADX min", group="Macro Regime", step=1)
-persist_n   = input.int(3, "Regime persistence bars", group="Macro Regime", minval=1)
-block_d     = input.bool(true, "Block in REGIME D", group="Macro Regime")
-block_b     = input.bool(true, "Block trend in REGIME B", group="Macro Regime")
-sl_buf_atr  = input.float(0.3, "Stop buffer beyond OR x ATR", group="Levels", step=0.1)
-min_stop_atr= input.float(0.5, "Min stop x ATR", group="Levels", step=0.1)
-sl_max_atr  = input.float(2.5, "Max stop x ATR", group="Levels", step=0.25)
-tp1_rr      = input.float(1.0, "TP1 R (debit-spread cap)", group="Levels", step=0.25)
-tp2_rr      = input.float(4.0, "TP2 R", group="Levels", step=0.25)
+auto_tf  = input.bool(true, "Auto breakout buffer per TF", group="ORB", tooltip="<=5m -> 0.0, else 0.25 ATR. OFF = manual.")
+allow_reentry = input.bool(false, "Allow re-entry (re-arm inside OR)", group="ORB",
+            tooltip="OFF = one signal per side per day (validated default). ON = re-arm when price falls back inside the OR; capped by Max entries.")
+max_entries  = input.int(2, "Max entries per side / day", group="ORB", minval=1)
+// ───────────────────────── STRUCTURE GATE (stack engine) ─────────────────────────
+trend_mode = input.string("Auto (structure <=5m / EMA >=15m)", "Trend gate", group="Structure gate",
+             options=["Auto (structure <=5m / EMA >=15m)", "Structure (HH/HL)", "EMA trend"])
+struct_lb  = input.int(5, "Structure pivot lookback (L=R)", group="Structure gate", minval=2)
+struct_tol = input.float(0.10, "Structure tolerance %", group="Structure gate", step=0.05)
+trend_ema_f = input.int(21, "Trend EMA fast (EMA mode)", group="Structure gate", minval=2)
+trend_ema_s = input.int(50, "Trend EMA slow (EMA mode)", group="Structure gate", minval=5)
+// ───────────────────────── VWAP CAP ─────────────────────────
+cap_on = input.bool(true, "VWAP-extension cap", group="VWAP cap")
+cap_k  = input.float(2.0, "Cap k (xATR beyond VWAP)", group="VWAP cap", step=0.25, minval=0.5)
+// ───────────────────────── REGIME ─────────────────────────
+local_adx_min = input.float(20.0, "Local ADX min", group="Regime", step=1)
+local_atr_hi  = input.float(2.5,  "Volatile ATR%",  group="Regime", step=0.25)
+block_range   = input.bool(true,  "Block RANGE regime", group="Regime")
+macro_en       = input.bool(true,  "MACRO filter ON", group="Regime")
+macro_standdown= input.bool(true,  "Stand-down vs SPY trend", group="Regime")
+spy_sym  = input.symbol("SPY",      "Macro trend ref", group="Regime")
+vix_sym  = input.symbol("CBOE:VIX", "Macro vol ref",   group="Regime")
+vix_calm = input.float(15.0, "VIX calm",     group="Regime", step=1)
+vix_vol  = input.float(25.0, "VIX volatile", group="Regime", step=1)
+vix_ext  = input.float(35.0, "VIX extreme",  group="Regime", step=1)
+spy_adx_min = input.float(25.0, "Macro ADX min", group="Regime", step=1)
+persist_n   = input.int(3, "Regime persistence bars", group="Regime", minval=1)
+block_d     = input.bool(true, "Block REGIME D", group="Regime")
+block_b     = input.bool(true, "Block trend in REGIME B", group="Regime")
+// ───────────────────────── RISK PLAN (graduated: structure stop + trail) ─────────────────────────
+stop_mode = input.string("Structure swing (HH/HL)", "Stop placement", group="Risk plan",
+            options=["Structure swing (HH/HL)", "OR edge"],
+            tooltip="F25b: stop at the last HH/HL swing ~halves the risk. The credit-spread short strike sits here.")
+sl_buf_atr  = input.float(0.3, "Stop buffer beyond anchor x ATR", group="Risk plan", step=0.1)
+min_stop_atr= input.float(0.5, "Min stop x ATR", group="Risk plan", step=0.1)
+sl_max_atr  = input.float(2.5, "Max stop x ATR", group="Risk plan", step=0.25)
+trail_atr   = input.float(2.0, "Trail x ATR (chandelier — exit signal)", group="Risk plan", step=0.5, minval=0.5,
+              tooltip="F27b: exit the option when the UNDERLYING crosses the trail. Spreads can also just run to their strikes.")
+tp1_rr      = input.float(1.0, "TP1 R (debit-spread cap strike)", group="Risk plan", step=0.25)
+// ───────────────────────── OPTIONS ─────────────────────────
+strike_sel  = input.string("1 ITM", "Naked-buy strike", group="Options",
+              options=["2 ITM", "1 ITM", "ATM", "1 OTM", "2 OTM"],
+              tooltip="1-2 ITM = higher delta, tracks the underlying move (default). 1-2 OTM = cheaper convexity, needs the move to run. The dashboard shows the whole ladder.")
 strike_inc  = input.float(1.0, "Strike increment $", group="Options", step=0.5, minval=0.5,
-              tooltip="SPY/QQQ trade $1 strikes (use 0.5 for the near-money 0DTE grid).")
+              tooltip="SPY/QQQ trade $1 strikes (0.5 exists near the money on 0DTE).")
 spread_w    = input.float(3.0, "Spread width $ (protection / cap leg)", group="Options", step=1.0, minval=1.0)
+max_dte     = input.int(4, "Max DTE hold (trading days)", group="Options", minval=0, maxval=10,
+              tooltip="0DTE to enter; if holding, never past this expiry. Default 4.")
 show_table  = input.bool(true, "Show options dashboard", group="Options")
-show_levels = input.bool(true, "Show OR + entry level lines", group="Options")
+show_levels = input.bool(true, "Show OR + level lines", group="Options")
+show_line_labels = input.bool(true, "Write ENTRY / STOP / TP on the chart", group="Options")
 
 // ───────────────────────── CORE ─────────────────────────
 atr14 = ta.atr(14)
@@ -58,13 +88,49 @@ emaF = ta.ema(close, trend_ema_f)
 emaS = ta.ema(close, trend_ema_s)
 bool trend_up   = close > emaS and emaF > emaS
 bool trend_down = close < emaS and emaF < emaS
+float vwap_c = ta.vwap
 int o_now = hour(time, sess_tz) * 60 + minute(time, sess_tz)
 bool new_day = ta.change(time("D")) != 0
-bool rth = (dayofweek != dayofweek.saturday and dayofweek != dayofweek.sunday)
+bool wkday = dayofweek != dayofweek.saturday and dayofweek != dayofweek.sunday
 int tf_s = timeframe.in_seconds()
 float eff_brk = auto_tf ? (tf_s <= 300 ? 0.0 : 0.25) : brk_buf_atr
-int   eff_cut_hhmm = auto_tf ? 1500 : trade_end_hhmm
-int trade_end = (eff_cut_hhmm / 100) * 60 + (eff_cut_hhmm % 100)
+int trade_end = (trade_end_hhmm / 100) * 60 + (trade_end_hhmm % 100)
+bool sym_ok = syminfo.ticker == "SPY" or syminfo.ticker == "QQQ"
+
+// ───────────────────────── HH/HL STRUCTURE STATE (port of hs_harness.py; pivot_tie='tv' per F28) ─────────────────────────
+float ph = ta.pivothigh(high, struct_lb, struct_lb)
+float pl = ta.pivotlow(low,  struct_lb, struct_lb)
+var float ph_last = na
+var float ph_prev = na
+var float pl_last = na
+var float pl_prev = na
+var int   st_state = 0
+int st_prev = st_state
+if not na(ph)
+    if na(ph_last) or math.abs(ph - ph_last) / ph_last * 100.0 >= struct_tol
+        ph_prev := ph_last
+        ph_last := ph
+if not na(pl)
+    if na(pl_last) or math.abs(pl - pl_last) / pl_last * 100.0 >= struct_tol
+        pl_prev := pl_last
+        pl_last := pl
+bool s_hh = not na(ph_last) and not na(ph_prev) and ph_last > ph_prev
+bool s_lh = not na(ph_last) and not na(ph_prev) and ph_last < ph_prev
+bool s_hl = not na(pl_last) and not na(pl_prev) and pl_last > pl_prev
+bool s_ll = not na(pl_last) and not na(pl_prev) and pl_last < pl_prev
+if s_hh and s_hl
+    st_state := 1
+else if s_ll and s_lh
+    st_state := 2
+else if (s_hh and s_ll) or (s_hl and s_lh)
+    st_state := 3
+if st_prev == 2 and not na(ph_last) and close > ph_last and close[1] <= ph_last
+    st_state := 0
+if st_prev == 1 and not na(pl_last) and close < pl_last and close[1] >= pl_last
+    st_state := 0
+bool use_struct = trend_mode == "Structure (HH/HL)" or (trend_mode == "Auto (structure <=5m / EMA >=15m)" and tf_s <= 300)
+bool eff_up   = use_struct ? (st_state == 1) : trend_up
+bool eff_down = use_struct ? (st_state == 2) : trend_down
 
 // ───────────────────────── MACRO REGIME ─────────────────────────
 spy_b() =>
@@ -98,12 +164,10 @@ string regime = reg_conf != "-" ? reg_conf : reg_raw
 bool macro_allow = not macro_en or not ((regime == "D" and block_d) or (regime == "B" and block_b))
 bool macro_long_ok  = not macro_en or not macro_standdown or not spy_dn
 bool macro_short_ok = not macro_en or not macro_standdown or not spy_up
-
-// ───────────────────────── LOCAL REGIME ─────────────────────────
 int local_regime = atr_pct >= local_atr_hi ? 3 : adxV >= local_adx_min ? 1 : 2
 bool local_ok = not block_range or local_regime != 2
 
-// ───────────────────────── OPENING RANGE + LEVELS (frozen at OR close) ─────────────────────────
+// ───────────────────────── OPENING RANGE + LEVELS ─────────────────────────
 bool in_or = not na(time(timeframe.period, or_start, sess_tz))
 var float or_high = na
 var float or_low  = na
@@ -119,92 +183,222 @@ if not in_or and not na(or_high)
     or_set := true
 float brk_buf = atr14 * eff_brk
 var float Le = na
-var float Ls = na
 var float Se = na
-var float Ss = na
 var bool  traded_l = false
 var bool  traded_s = false
+var int   n_l = 0
+var int   n_s = 0
 if new_day
     Le := na
-    Ls := na
     Se := na
-    Ss := na
     traded_l := false
     traded_s := false
+    n_l := 0
+    n_s := 0
 if or_set and na(Le) and not na(or_high) and not na(or_low)
     Le := or_high + brk_buf
-    Ls := math.min(math.max(or_low  - atr14 * sl_buf_atr, Le - atr14 * sl_max_atr), Le - atr14 * min_stop_atr)
     Se := or_low  - brk_buf
-    Ss := math.max(math.min(or_high + atr14 * sl_buf_atr, Se + atr14 * sl_max_atr), Se + atr14 * min_stop_atr)
-float Lt1 = Le + (Le - Ls) * tp1_rr
-float St1 = Se - (Ss - Se) * tp1_rr
-bool window = or_set and rth and o_now < trade_end and not na(Le)
-bool gate_long  = long_on  and trend_up   and macro_allow and macro_long_ok  and local_ok
-bool gate_short = short_on and trend_down  and macro_allow and macro_short_ok and local_ok
-bool long_fire  = window and not traded_l and gate_long  and high >= Le
-bool short_fire = window and not traded_s and gate_short and low  <= Se
-if long_fire
-    traded_l := true
-if short_fire
-    traded_s := true
+// stop anchor: last HH/HL swing (structure) or the OR edge. Recomputed while ARMED, frozen at fill.
+var bool in_long  = false
+var bool in_short = false
+float anchorL = (stop_mode == "Structure swing (HH/HL)" and not na(pl_last)) ? pl_last : or_low
+float anchorS = (stop_mode == "Structure swing (HH/HL)" and not na(ph_last)) ? ph_last : or_high
+var float Ls = na
+var float Ss = na
+if not na(Le) and not in_long
+    Ls := math.min(math.max(anchorL - atr14 * sl_buf_atr, Le - atr14 * sl_max_atr), Le - atr14 * min_stop_atr)
+if not na(Se) and not in_short
+    Ss := math.max(math.min(anchorS + atr14 * sl_buf_atr, Se + atr14 * sl_max_atr), Se + atr14 * min_stop_atr)
+float Lt1 = na(Le) or na(Ls) ? na : Le + (Le - Ls) * tp1_rr
+float St1 = na(Se) or na(Ss) ? na : Se - (Ss - Se) * tp1_rr
 
-// ───────────────────────── OPTIONS TRANSLATION ─────────────────────────
-f_strike(p) => math.round(p / strike_inc) * strike_inc
+// ───────────────────────── VWAP CAP + GATES + FIRING ─────────────────────────
+float extL = na(Le) ? na : (Le - vwap_c) / atr14
+float extS = na(Se) ? na : (vwap_c - Se) / atr14
+bool cap_long_ok  = not cap_on or na(extL) or extL <= cap_k
+bool cap_short_ok = not cap_on or na(extS) or extS <= cap_k
+bool window = or_set and wkday and o_now < trade_end and not na(Le)
+bool gate_long  = long_on  and eff_up   and macro_allow and macro_long_ok  and local_ok
+bool gate_short = short_on and eff_down  and macro_allow and macro_short_ok and local_ok
+if allow_reentry and traded_l and not na(or_high) and close < or_high and n_l < max_entries
+    traded_l := false
+if allow_reentry and traded_s and not na(or_low) and close > or_low and n_s < max_entries
+    traded_s := false
+bool sig_l = window and not traded_l and gate_long  and high >= Le
+bool sig_s = window and not traded_s and gate_short and low  <= Se
+bool long_fire  = sig_l and cap_long_ok
+bool short_fire = sig_s and cap_short_ok
+bool long_skip  = sig_l and not cap_long_ok
+bool short_skip = sig_s and not cap_short_ok
+if sig_l
+    traded_l := true
+    n_l += 1
+if sig_s
+    traded_s := true
+    n_s += 1
+
+// ───────────────────────── IN-TRADE: trail on the underlying = the option EXIT signal ─────────────────────────
+var float lstop = na
+var float sstop = na
+if new_day
+    in_long  := false
+    in_short := false
+    lstop := na
+    sstop := na
+if long_fire
+    in_long := true
+    lstop := Ls
+if short_fire
+    in_short := true
+    sstop := Ss
+if in_long
+    lstop := math.max(lstop, close - trail_atr * atr14)
+    if low <= lstop
+        in_long := false
+if in_short
+    sstop := math.min(sstop, close + trail_atr * atr14)
+    if high >= sstop
+        in_short := false
+bool exit_l = in_long[1] and not in_long
+bool exit_s = in_short[1] and not in_short
+bool l_live = (window and not traded_l and gate_long) or in_long
+bool s_live = (window and not traded_s and gate_short) or in_short
+float l_stop_now = in_long ? lstop : Ls
+float s_stop_now = in_short ? sstop : Ss
+
+// ───────────────────────── OPTIONS TRANSLATION (1-2 ITM/OTM · 0-4 DTE · buy-only + verticals) ─────────────────────────
+f_round(p) => math.round(p / strike_inc) * strike_inc
+f_floor(p) => math.floor(p / strike_inc) * strike_inc
+f_ceil(p)  => math.ceil(p / strike_inc)  * strike_inc
 f_px(p) => str.tostring(p, "#.##")
-// display side: a FILLED side first, else the trend-aligned side (armed/pending)
+// strike n steps ITM (n>0) / OTM (n<0) / ATM (0) relative to the entry level, side-aware
+f_strike_n(e, isl, n) =>
+    float k = na
+    if n == 0
+        k := f_round(e)
+    else if n > 0
+        k := isl ? f_floor(e) - (n - 1) * strike_inc : f_ceil(e) + (n - 1) * strike_inc
+    else
+        k := isl ? f_ceil(e) + (-n - 1) * strike_inc : f_floor(e) - (-n - 1) * strike_inc
+    k
+int sel_n = strike_sel == "2 ITM" ? 2 : strike_sel == "1 ITM" ? 1 : strike_sel == "1 OTM" ? -1 : strike_sel == "2 OTM" ? -2 : 0
+// display side: a LIVE trade first, else the structure-aligned side
 bool have = or_set and not na(Le) and not na(Se)
-int dside = traded_l ? 1 : traded_s ? -1 : trend_up ? 1 : trend_down ? -1 : 0
+int dside = in_long ? 1 : in_short ? -1 : traded_l ? 1 : traded_s ? -1 : eff_up ? 1 : eff_down ? -1 : 0
 bool islong = dside == 1
-bool shc = dside != 0                                        // a side chosen -> show the option contracts
-float e_  = islong ? Le  : Se
-float s_  = islong ? Ls  : Ss
+bool shc = dside != 0 and have
+float e_  = islong ? Le : Se
+float s_  = islong ? l_stop_now : s_stop_now
 float t1_ = islong ? Lt1 : St1
-float atm  = f_strike(e_)
-float ds_s = f_strike(t1_)                                   // debit-spread short leg = cap @ TP1
-float cs_s = f_strike(s_)                                    // credit-spread short leg = the stop
-float cs_l = islong ? cs_s - spread_w : cs_s + spread_w      // credit-spread long leg = protection
-string oc = islong ? "C" : "P"                               // directional / debit = call(long) put(short)
-string cc = islong ? "P" : "C"                               // credit spread uses the OTHER side
+float k_naked = shc ? f_strike_n(e_, islong, sel_n) : na          // the chosen BUY strike
+float k_itm2  = shc ? f_strike_n(e_, islong,  2) : na             // ladder for the dashboard
+float k_itm1  = shc ? f_strike_n(e_, islong,  1) : na
+float k_atm   = shc ? f_strike_n(e_, islong,  0) : na
+float k_otm1  = shc ? f_strike_n(e_, islong, -1) : na
+float k_otm2  = shc ? f_strike_n(e_, islong, -2) : na
+float ds_s = shc ? f_round(t1_) : na                              // debit-spread short leg = cap @ TP1
+float cs_s = shc ? f_round(s_)  : na                              // credit-spread short leg = the structure stop
+float cs_l = shc ? (islong ? cs_s - spread_w : cs_s + spread_w) : na
+string oc = islong ? "C" : "P"                                    // naked / debit side
+string cc = islong ? "P" : "C"                                    // credit spread = the OTHER side
 bool side_macro = islong ? macro_long_ok : macro_short_ok
 bool gated  = macro_allow and side_macro and local_ok
-bool filled = traded_l or traded_s
+bool filled = in_long or in_short
 string dir_txt = dside == 1 ? "LONG" : dside == -1 ? "SHORT" : "—"
-// live status — the stop-entry FIRES ON A TOUCH of the trigger, any bar until the cutoff (no close/retest needed)
-string st = tf_s > 1800 ? "use a 5m / 15m chart" : not have ? "OR forming…" : filled ? "FILLED ✓ — manage the trade" : not rth ? "off-session" : not window ? "window closed — no entry today" : dside == 0 ? "waiting: trend flat (need EMA stack)" : not gated ? "blocked: regime " + regime + (not side_macro ? " + SPY stand-down" : "") : "ARMED — fires when price touches " + f_px(e_)
-// expiry labels — show BOTH 0DTE and the nearest weekly Friday
-int wk_add = (6 - dayofweek + 7) % 7
-int t_wk = time + wk_add * 86400000
-string exp_both = "0DTE " + str.tostring(month(time)) + "/" + str.tostring(dayofmonth(time)) + "  ·  Wk " + str.tostring(month(t_wk)) + "/" + str.tostring(dayofmonth(t_wk))
+// expiries: 0DTE today · furthest allowed hold = +max_dte TRADING days
+f_addtd(t0, n) =>
+    int t1 = t0
+    int added = 0
+    while added < n
+        t1 += 86400000
+        int dw = dayofweek(t1, sess_tz)
+        if dw != dayofweek.saturday and dw != dayofweek.sunday
+            added += 1
+    t1
+int t_max = f_addtd(time, max_dte)
+string exp_txt = "0DTE " + str.tostring(month(time)) + "/" + str.tostring(dayofmonth(time)) +
+     "  ·  max hold " + str.tostring(max_dte) + "DTE " + str.tostring(month(t_max)) + "/" + str.tostring(dayofmonth(t_max))
+string st = not sym_ok ? "⚠ use SPY or QQQ (scope for now)" :
+     tf_s > 1800 ? "use a 5m / 15m chart" :
+     not have ? "OR forming…" :
+     filled ? "IN TRADE — exit when trail breaks" :
+     (traded_l or traded_s) ? "done for today (signal used)" :
+     not wkday ? "off-session" :
+     not window ? "window closed — no entry today" :
+     dside == 0 ? (use_struct ? "waiting: no HH/HL structure" : "waiting: trend flat") :
+     not gated ? "blocked: regime " + regime + (not side_macro ? " + SPY stand-down" : "") :
+     not (islong ? cap_long_ok : cap_short_ok) ? "EXT ⚠ beyond VWAP cap — stand down" :
+     "ARMED — fires on a touch of " + f_px(e_)
 
 // ───────────────────────── VISUALS ─────────────────────────
-plot(show_levels and or_set ? or_high : na, "OR high", color=color.new(color.aqua, 70), style=plot.style_linebr)
+plot(show_levels and or_set ? or_high : na, "OR high", color=color.new(color.aqua, 70),   style=plot.style_linebr)
 plot(show_levels and or_set ? or_low  : na, "OR low",  color=color.new(color.orange, 70), style=plot.style_linebr)
-plot(show_levels and window and not traded_l ? Le : na, "Long entry",  color=color.new(color.lime, 30), style=plot.style_linebr, linewidth=2)
-plot(show_levels and window and not traded_s ? Se : na, "Short entry", color=color.new(color.red, 30),  style=plot.style_linebr, linewidth=2)
-plotshape(long_fire,  "Long fire",  shape.triangleup,   location.belowbar, color.new(color.lime, 0), text="↑", size=size.tiny)
-plotshape(short_fire, "Short fire", shape.triangledown, location.abovebar, color.new(color.red, 0),  text="↓", size=size.tiny)
-alertcondition(long_fire,  "ORB Options LONG",  "HIGHSTRIKE ORB options: LONG — buy CALL / debit call spread / credit put spread (strikes from ORB levels)")
-alertcondition(short_fire, "ORB Options SHORT", "HIGHSTRIKE ORB options: SHORT — buy PUT / debit put spread / credit call spread (strikes from ORB levels)")
+plot(show_levels and l_live ? Le : na, "Long entry",  color=color.new(color.yellow, 0), style=plot.style_linebr, linewidth=2)
+plot(show_levels and s_live ? Se : na, "Short entry", color=color.new(color.yellow, 0), style=plot.style_linebr, linewidth=2)
+plot(show_levels and l_live ? l_stop_now : na, "Long stop",  color=color.new(color.red, 25),  style=plot.style_linebr)
+plot(show_levels and s_live ? s_stop_now : na, "Short stop", color=color.new(color.red, 25),  style=plot.style_linebr)
+plot(show_levels and l_live ? Lt1 : na, "Long TP1 (debit cap)",  color=color.new(color.green, 10), style=plot.style_linebr)
+plot(show_levels and s_live ? St1 : na, "Short TP1 (debit cap)", color=color.new(color.green, 10), style=plot.style_linebr)
+plotshape(long_fire,  "Long fire",  shape.triangleup,   location.belowbar, color.new(color.lime, 0), text="CALL", textcolor=color.white, size=size.tiny)
+plotshape(short_fire, "Short fire", shape.triangledown, location.abovebar, color.new(color.red, 0),  text="PUT",  textcolor=color.white, size=size.tiny)
+plotshape(long_skip,  "Long capped",  shape.xcross, location.belowbar, color.new(color.gray, 0), text="EXT", textcolor=color.gray, size=size.tiny)
+plotshape(short_skip, "Short capped", shape.xcross, location.abovebar, color.new(color.gray, 0), text="EXT", textcolor=color.gray, size=size.tiny)
+plotshape(exit_l, "Exit long",  shape.square, location.abovebar, color.new(color.orange, 0), text="EXIT", textcolor=color.white, size=size.tiny)
+plotshape(exit_s, "Exit short", shape.square, location.belowbar, color.new(color.orange, 0), text="EXIT", textcolor=color.white, size=size.tiny)
+bgcolor(macro_en and regime == "D" ? color.new(color.red, 90) : na)
+f_setlbl(lbl, cond, price, txt, col) =>
+    label out = lbl
+    if cond and not na(price)
+        if na(out)
+            out := label.new(bar_index + 2, price, txt, style=label.style_label_left, color=col, textcolor=color.white, size=size.small)
+        label.set_xy(out, bar_index + 2, price)
+        label.set_text(out, txt)
+        label.set_color(out, col)
+    else if not na(out)
+        label.delete(out)
+        out := na
+    out
+var label lbl_Le = na
+var label lbl_Ls = na
+var label lbl_Lt = na
+var label lbl_Se = na
+var label lbl_Ss = na
+var label lbl_St = na
+if barstate.islast and show_line_labels
+    lbl_Le := f_setlbl(lbl_Le, l_live, Le, "▲ ENTRY " + str.tostring(Le, format.mintick), color.new(color.yellow, 0))
+    lbl_Ls := f_setlbl(lbl_Ls, l_live, l_stop_now, (in_long ? "TRAIL " : "STOP ") + str.tostring(l_stop_now, format.mintick), color.new(color.red, 0))
+    lbl_Lt := f_setlbl(lbl_Lt, l_live, Lt1, "TP1 " + str.tostring(Lt1, format.mintick) + " (debit cap)", color.new(color.green, 0))
+    lbl_Se := f_setlbl(lbl_Se, s_live, Se, "▼ ENTRY " + str.tostring(Se, format.mintick), color.new(color.yellow, 0))
+    lbl_Ss := f_setlbl(lbl_Ss, s_live, s_stop_now, (in_short ? "TRAIL " : "STOP ") + str.tostring(s_stop_now, format.mintick), color.new(color.red, 0))
+    lbl_St := f_setlbl(lbl_St, s_live, St1, "TP1 " + str.tostring(St1, format.mintick) + " (debit cap)", color.new(color.green, 0))
+alertcondition(long_fire,  "ORB Options LONG",  "HIGHSTRIKE ORB options: LONG — buy CALL (1-2 ITM) / call debit spread / put credit spread @ structure stop. 0DTE, max 4DTE hold.")
+alertcondition(short_fire, "ORB Options SHORT", "HIGHSTRIKE ORB options: SHORT — buy PUT (1-2 ITM) / put debit spread / call credit spread @ structure stop. 0DTE, max 4DTE hold.")
+alertcondition(exit_l or exit_s, "ORB Options EXIT", "HIGHSTRIKE ORB options: EXIT — underlying broke the trail; close the option/spread.")
 
-var table t = table.new(position.top_right, 2, 9, bgcolor=color.new(color.black, 60), frame_color=color.gray, frame_width=1, border_color=color.new(color.gray, 70), border_width=1)
+// ───────────────────────── DASHBOARD ─────────────────────────
+var table t = table.new(position.top_right, 2, 11, bgcolor=color.new(color.black, 60), frame_color=color.gray, frame_width=1, border_color=color.new(color.gray, 70), border_width=1)
 if barstate.islast and show_table
     color hd  = dside == 1 ? color.lime : dside == -1 ? color.red : color.silver
     color stc = filled ? color.lime : (have and gated and dside != 0) ? color.aqua : color.orange
     table.cell(t, 0, 0, "ORB OPTIONS", text_color=color.yellow, text_size=size.small)
-    table.cell(t, 1, 0, syminfo.ticker + "  " + dir_txt, text_color=hd, text_size=size.small)
+    table.cell(t, 1, 0, syminfo.ticker + "  " + dir_txt + (sym_ok ? "" : " ⚠"), text_color=hd, text_size=size.small)
     table.cell(t, 0, 1, "Status", text_color=color.silver, text_size=size.tiny)
     table.cell(t, 1, 1, st, text_color=stc, text_size=size.tiny)
     table.cell(t, 0, 2, "OR", text_color=color.silver, text_size=size.tiny)
     table.cell(t, 1, 2, have ? f_px(or_low) + " / " + f_px(or_high) : "forming", text_color=color.aqua, text_size=size.tiny)
     table.cell(t, 0, 3, "Triggers", text_color=color.silver, text_size=size.tiny)
     table.cell(t, 1, 3, have ? "long > " + f_px(Le) + "   short < " + f_px(Se) : "—", text_color=color.silver, text_size=size.tiny)
-    table.cell(t, 0, 4, "Buy " + (shc ? (islong ? "call" : "put") : ""), text_color=color.silver, text_size=size.tiny)
-    table.cell(t, 1, 4, shc ? f_px(atm) + oc + "  (ATM)" : "(waiting for trend side)", text_color=color.aqua, text_size=size.tiny)
-    table.cell(t, 0, 5, "Debit", text_color=color.silver, text_size=size.tiny)
-    table.cell(t, 1, 5, shc ? f_px(atm) + "/" + f_px(ds_s) + oc + "  cap @TP1" : "—", text_color=color.teal, text_size=size.tiny)
-    table.cell(t, 0, 6, "Credit", text_color=color.silver, text_size=size.tiny)
-    table.cell(t, 1, 6, shc ? f_px(cs_s) + "/" + f_px(cs_l) + cc + "  collect" : "—", text_color=color.new(color.green, 0), text_size=size.tiny)
-    table.cell(t, 0, 7, "Expiry", text_color=color.silver, text_size=size.tiny)
-    table.cell(t, 1, 7, exp_both, text_color=color.silver, text_size=size.tiny)
-    table.cell(t, 0, 8, "Note", text_color=color.silver, text_size=size.tiny)
-    table.cell(t, 1, 8, "strikes from ORB levels · price/IV at broker", text_color=color.gray, text_size=size.tiny)
+    table.cell(t, 0, 4, "BUY " + (shc ? (islong ? "call" : "put") : ""), text_color=color.silver, text_size=size.tiny)
+    table.cell(t, 1, 4, shc ? f_px(k_naked) + oc + "  (" + strike_sel + ")" : "(waiting for a side)", text_color=color.aqua, text_size=size.tiny)
+    table.cell(t, 0, 5, "Ladder", text_color=color.silver, text_size=size.tiny)
+    table.cell(t, 1, 5, shc ? "ITM " + f_px(k_itm2) + "·" + f_px(k_itm1) + "  ATM " + f_px(k_atm) + "  OTM " + f_px(k_otm1) + "·" + f_px(k_otm2) : "—", text_color=color.silver, text_size=size.tiny)
+    table.cell(t, 0, 6, "Debit spr", text_color=color.silver, text_size=size.tiny)
+    table.cell(t, 1, 6, shc ? f_px(k_naked) + "/" + f_px(ds_s) + oc + "  cap @TP1" : "—", text_color=color.teal, text_size=size.tiny)
+    table.cell(t, 0, 7, "Credit spr", text_color=color.silver, text_size=size.tiny)
+    table.cell(t, 1, 7, shc ? f_px(cs_s) + "/" + f_px(cs_l) + cc + "  short @stop" : "—", text_color=color.new(color.green, 0), text_size=size.tiny)
+    table.cell(t, 0, 8, "Exit", text_color=color.silver, text_size=size.tiny)
+    table.cell(t, 1, 8, shc ? "trail break " + (filled ? f_px(islong ? lstop : sstop) : "(after fill)") + "  ·  0DTE: flat by close  ·  else exit by max-DTE" : "—", text_color=color.orange, text_size=size.tiny)
+    table.cell(t, 0, 9, "Expiry", text_color=color.silver, text_size=size.tiny)
+    table.cell(t, 1, 9, exp_txt, text_color=color.silver, text_size=size.tiny)
+    table.cell(t, 0, 10, "Note", text_color=color.silver, text_size=size.tiny)
+    table.cell(t, 1, 10, "buy-only + defined-risk verticals · price/IV at broker", text_color=color.gray, text_size=size.tiny)

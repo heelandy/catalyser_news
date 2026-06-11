@@ -116,6 +116,31 @@ $runner = Start-Process -FilePath "python" -ArgumentList @(".\macro_pipeline_run
 $runner.Id
 ```
 
+Preferred path: use the helper scripts instead of typing the commands above.
+They refuse to start duplicates and accept the daily stop time:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\start_live_pipeline.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\status_live_pipeline.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\stop_live_pipeline.ps1
+```
+
+Daily 7:00-18:00 schedule. Register Windows Task Scheduler tasks once so the
+pipeline starts every day at 7:00 AM, stops at 6:00 PM, and repeats the next
+day instead of running around the clock:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\setup_schedule.ps1
+```
+
+- The start task launches `tools\start_live_pipeline.ps1`, which passes
+  `--stop-at 18:00` to the runner so it also exits on its own.
+- The stop task runs `tools\stop_live_pipeline.ps1` at 6:00 PM as a backstop
+  (it also catches a runner stuck inside a release watch window).
+- The dashboard HTTP server keeps running so the last data stays viewable;
+  the dashboard shows a stale-data banner while the runner is outside its
+  window. Use `tools\setup_schedule.ps1 -Remove` to unregister both tasks.
+
 Verify that it is running:
 
 ```powershell
@@ -137,6 +162,15 @@ Operational notes:
 - `--watch-releases` polls the calendar every 15 seconds while the command is
   within its watch window. `--run-forever --loop-seconds 60` keeps restarting
   cycles so upcoming releases are picked up without manual action.
+- Interpreted news now refreshes first in every cycle and again every
+  `--news-feed-refresh-seconds` (default 180) in the background, so headlines
+  stay current even while a release watch window blocks the cycle for up to 30
+  minutes. The news cache default is 3 minutes (`--news-feed-cache-minutes`).
+- The dashboard reloads its data every 30 seconds and pops up a styled alert
+  card when a new alert (less than 30 minutes old) appears in
+  `macro_pipeline_alert_summary.json`. Open
+  `http://127.0.0.1:8787/dashboard/?popupPreview=1` to preview the popup with
+  the most recent alert regardless of age.
 - Raw `release_time` values in the CSV are UTC timestamps without a timezone
   suffix. The dashboard displays them in ET and shows UTC in the hover title.
 
@@ -916,15 +950,15 @@ These are deferred operational hardening items. They are not required for the
 current manual/background workflow, but they should be added before relying on
 the system unattended.
 
-1. Add `start_live_pipeline.ps1`, `stop_live_pipeline.ps1`, and
-   `status_live_pipeline.ps1` so the live runner can be managed without typing
-   long `Start-Process` and process-inspection commands.
-2. Add a Windows Task Scheduler setup script so the dashboard server and live
-   pipeline restart after reboot or login.
-3. Add duplicate-runner protection in `macro_pipeline_runner.py`, such as a PID
-   or lock file, so two live runners cannot overwrite the same output files.
-4. Add a dashboard stale-data warning when `macro_pipeline_status.json` is older
-   than the expected loop interval.
+1. Done: `tools/start_live_pipeline.ps1`, `tools/stop_live_pipeline.ps1`, and
+   `tools/status_live_pipeline.ps1` manage the live runner and dashboard server.
+2. Done: `tools/setup_schedule.ps1` registers daily Task Scheduler tasks that
+   start the pipeline at 7:00 AM and stop it at 6:00 PM.
+3. Partially done: the start script refuses to launch a second runner. A PID or
+   lock file inside `macro_pipeline_runner.py` would still protect manual runs.
+4. Done: the dashboard shows a stale-data banner when
+   `macro_pipeline_status.json` is older than the expected loop interval and a
+   warning when the last cycle failed.
 5. Add log rotation for `macro_pipeline_runner.log` so long-running use does not
    grow the log indefinitely.
 6. Add focused tests for UTC/ET handling, `--watch-releases`, and actual-value

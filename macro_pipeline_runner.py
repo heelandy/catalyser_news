@@ -18,6 +18,7 @@ import argparse
 import json
 import subprocess
 import sys
+import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -122,8 +123,43 @@ def python_cmd(args: argparse.Namespace, script_name: str) -> list[str]:
     return [args.python, script_name]
 
 
+def news_feed_command(args: argparse.Namespace) -> list[str]:
+    return python_cmd(args, "macro_news_feed.py") + [
+        "--provider",
+        args.news_feed_provider,
+        "--tradingview-news-url",
+        args.news_feed_tradingview_url,
+        "--symbols",
+        args.news_feed_symbols,
+        "--max-per-symbol",
+        str(args.news_feed_max_per_symbol),
+        "--max-items",
+        str(args.news_feed_max_items),
+        "--lookback-hours",
+        str(args.news_feed_lookback_hours),
+        "--cache-minutes",
+        str(args.news_feed_cache_minutes),
+        "--output",
+        args.news_feed_output,
+        "--context-output",
+        args.news_regime_context,
+        "--summary-output",
+        args.news_feed_summary_output,
+    ]
+
+
 def build_stages(args: argparse.Namespace) -> list[Stage]:
     stages: list[Stage] = []
+
+    if not args.skip_news_feed:
+        stages.append(
+            Stage(
+                name="news_feed",
+                command=news_feed_command(args),
+                required_inputs=[],
+                expected_outputs=[args.news_feed_output, args.news_regime_context, args.news_feed_summary_output],
+            )
+        )
 
     if args.market_preset != "none":
         market_command = python_cmd(args, "fetch_nq_yahoo.py") + ["--preset", args.market_preset]
@@ -284,38 +320,6 @@ def build_stages(args: argparse.Namespace) -> list[Stage]:
                 ],
                 required_inputs=[args.grades_output],
                 expected_outputs=[args.probability_validation_report_output, args.probability_validation_rows_output],
-            )
-        )
-
-    if not args.skip_news_feed:
-        stages.append(
-            Stage(
-                name="news_feed",
-                command=python_cmd(args, "macro_news_feed.py")
-                + [
-                    "--provider",
-                    args.news_feed_provider,
-                    "--tradingview-news-url",
-                    args.news_feed_tradingview_url,
-                    "--symbols",
-                    args.news_feed_symbols,
-                    "--max-per-symbol",
-                    str(args.news_feed_max_per_symbol),
-                    "--max-items",
-                    str(args.news_feed_max_items),
-                    "--lookback-hours",
-                    str(args.news_feed_lookback_hours),
-                    "--cache-minutes",
-                    str(args.news_feed_cache_minutes),
-                    "--output",
-                    args.news_feed_output,
-                    "--context-output",
-                    args.news_regime_context,
-                    "--summary-output",
-                    args.news_feed_summary_output,
-                ],
-                required_inputs=[],
-                expected_outputs=[args.news_feed_output, args.news_regime_context, args.news_feed_summary_output],
             )
         )
 
@@ -514,6 +518,34 @@ def run_alert_notifier(args: argparse.Namespace, root: Path, log_file: Path | No
         log("DONE alert_notifier", log_file)
 
 
+def news_refresher_loop(
+    args: argparse.Namespace,
+    root: Path,
+    log_file: Path | None,
+    stop_event: threading.Event,
+    news_lock: threading.Lock,
+) -> None:
+    interval = max(int(args.news_feed_refresh_seconds), 0)
+    if interval <= 0:
+        return
+    while not stop_event.wait(interval):
+        with news_lock:
+            if stop_event.is_set():
+                return
+            command = news_feed_command(args)
+            log(f"START news_feed_refresh: {command_text(command)}", log_file)
+            try:
+                proc = subprocess.run(command, cwd=root, capture_output=True, text=True)
+                for output_line in (proc.stdout or "").splitlines():
+                    log(f"news_feed_refresh: {output_line.rstrip()}", log_file)
+                if proc.returncode != 0:
+                    log(f"news_feed_refresh failed with exit code {proc.returncode}", log_file)
+                else:
+                    log("DONE news_feed_refresh", log_file)
+            except Exception as exc:
+                log(f"news_feed_refresh failed: {exc}", log_file)
+
+
 def run_cycle(args: argparse.Namespace, root: Path, cycle: int) -> bool:
     log_file = Path(args.log_file) if args.log_file else None
     stages = build_stages(args)
@@ -544,12 +576,27 @@ def run_cycle(args: argparse.Namespace, root: Path, cycle: int) -> bool:
         "news_feed_provider": args.news_feed_provider,
     }
 
+    news_lock = threading.Lock()
+    stop_refresher = threading.Event()
+    refresher: threading.Thread | None = None
+    if not args.dry_run and not args.skip_news_feed and args.news_feed_refresh_seconds > 0:
+        refresher = threading.Thread(
+            target=news_refresher_loop,
+            args=(args, root, log_file, stop_refresher, news_lock),
+            daemon=True,
+        )
+        refresher.start()
+
     log(f"Pipeline cycle {cycle} starting with {len(stages)} stage(s)", log_file)
     try:
         if args.reaction_labels and len(args.reaction_labels) != len(args.reaction_files):
             raise RuntimeError("--reaction-labels must have the same count as --reaction-files")
         for stage in stages:
-            run_stage(stage, root, args.dry_run, log_file)
+            if stage.name in ("news_feed", "live_regime_context"):
+                with news_lock:
+                    run_stage(stage, root, args.dry_run, log_file)
+            else:
+                run_stage(stage, root, args.dry_run, log_file)
         status["ok"] = True
         log(f"Pipeline cycle {cycle} complete", log_file)
         return True
@@ -558,6 +605,9 @@ def run_cycle(args: argparse.Namespace, root: Path, cycle: int) -> bool:
         log(f"Pipeline cycle {cycle} failed: {exc}", log_file)
         return False
     finally:
+        stop_refresher.set()
+        if refresher is not None:
+            refresher.join(timeout=30)
         status["finished_at"] = now_iso()
         write_status(Path(args.status_output) if args.status_output else None, status, args.dry_run)
         run_alert_detector(args, root, log_file)
@@ -576,6 +626,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--python", default=sys.executable, help="Python executable used to launch child modules")
     p.add_argument("--market-data-config", default="market_data_config.json", help="Market data source config JSON")
     p.add_argument("--run-forever", action="store_true", help="Keep running cycles until Ctrl+C")
+    p.add_argument(
+        "--stop-at",
+        default="",
+        help="Local HH:MM daily stop time; the runner exits cleanly at/after this time instead of starting another cycle (e.g. 18:00)",
+    )
     p.add_argument("--max-cycles", type=int, default=0, help="Optional max cycles for --run-forever; 0 means unlimited")
     p.add_argument("--loop-seconds", type=int, default=60, help="Seconds between cycles when --run-forever is set")
     p.add_argument("--stop-on-error", action="store_true", help="Stop a forever run after a failed cycle")
@@ -656,7 +711,13 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--news-feed-max-per-symbol", type=int, default=8)
     p.add_argument("--news-feed-max-items", type=int, default=40)
     p.add_argument("--news-feed-lookback-hours", type=float, default=12.0)
-    p.add_argument("--news-feed-cache-minutes", type=int, default=10)
+    p.add_argument("--news-feed-cache-minutes", type=int, default=3)
+    p.add_argument(
+        "--news-feed-refresh-seconds",
+        type=int,
+        default=180,
+        help="Refresh interpreted news in the background this often while a cycle runs (0 disables); keeps news fresh during long --watch-releases windows",
+    )
     p.add_argument("--news-feed-output", default="macro_news_feed.csv")
     p.add_argument("--news-feed-summary-output", default="macro_news_feed_summary.json")
     p.add_argument("--tape-signal-files", nargs="*", default=["macro_tape_signals.json", "macro_tape_signals.csv"], help="Optional tape/ORB signal JSON or CSV files")
@@ -733,14 +794,41 @@ def normalize_args(args: argparse.Namespace) -> argparse.Namespace:
     return args
 
 
+def parse_stop_at(value: str) -> tuple[int, int] | None:
+    text = value.strip()
+    if not text:
+        return None
+    parts = text.split(":")
+    if len(parts) != 2:
+        raise SystemExit(f"--stop-at must be HH:MM, got: {value}")
+    try:
+        hour, minute = int(parts[0]), int(parts[1])
+    except ValueError:
+        raise SystemExit(f"--stop-at must be HH:MM, got: {value}")
+    if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        raise SystemExit(f"--stop-at must be a valid HH:MM time, got: {value}")
+    return hour, minute
+
+
+def past_stop_time(stop_at: tuple[int, int] | None) -> bool:
+    if stop_at is None:
+        return False
+    now = datetime.now()
+    return (now.hour, now.minute) >= stop_at
+
+
 def main() -> None:
     args = normalize_args(parse_args())
     root = Path.cwd()
     log_file = Path(args.log_file) if args.log_file else None
+    stop_at = parse_stop_at(args.stop_at)
     cycle = 1
 
     try:
         while True:
+            if past_stop_time(stop_at):
+                log(f"Daily stop time {args.stop_at} reached; exiting until the next scheduled start", log_file)
+                raise SystemExit(0)
             ok = run_cycle(args, root, cycle)
             if not args.run_forever:
                 raise SystemExit(0 if ok else 1)

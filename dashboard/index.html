@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>NQ Macro Catalyst Dashboard</title>
-    <link rel="stylesheet" href="./styles.css?v=123a5032840e">
+    <link rel="stylesheet" href="./styles.css?v=527ee2d5dae3">
   </head>
   <body>
     <header class="topbar">
@@ -22,6 +22,7 @@
     </header>
 
     <main class="app-shell">
+      <div class="stale-banner" id="staleBanner" hidden></div>
       <section class="metrics" id="metrics"></section>
       <section class="range-grid" id="componentRanges"></section>
       <section class="alert-panel" id="alertPanel"></section>
@@ -162,6 +163,8 @@
       </section>
     </main>
 
-    <script src="./app.js?v=c659f59da7f6"></script>
+    <div class="alert-popup-layer" id="alertPopupLayer" hidden></div>
+
+    <script src="./app.js?v=a204d6d89f35"></script>
   </body>
 </html>

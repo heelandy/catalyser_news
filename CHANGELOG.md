@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.0.9 - Timely News, Alert Popup Card, Daily Schedule
+
+- Fixed news not updating on time: the `news_feed` stage now runs first in
+  every pipeline cycle instead of after the calendar fetch, and a background
+  refresher re-runs it every `--news-feed-refresh-seconds` (default 180) so
+  headlines stay fresh while `--watch-releases` blocks a cycle for up to 30
+  minutes. The news cache default dropped from 10 to 3 minutes.
+- Added a dashboard alert popup card styled like the trading-app reference:
+  direction badge, alert-type pill, category chip, large bull-probability
+  readout, `Mixed Bias — Use Caution` banner, message box, and Release
+  Rule / Live Regime / Trade State bias tiles. New alerts younger than 30
+  minutes pop up once each (tracked in `localStorage`);
+  `?popupPreview=1` previews the card with the latest alert.
+- The dashboard now auto-reloads data every 30 seconds, keeps the selected
+  signal across reloads, and shows a stale-data banner when the pipeline
+  status is older than expected or the last cycle failed.
+- Added `--stop-at HH:MM` to `macro_pipeline_runner.py` so the runner exits
+  cleanly at a daily stop time.
+- Added `tools/start_live_pipeline.ps1`, `tools/stop_live_pipeline.ps1`,
+  `tools/status_live_pipeline.ps1`, and `tools/setup_schedule.ps1`. The
+  schedule script registers Windows Task Scheduler tasks that start the
+  pipeline daily at 7:00 AM and stop it at 6:00 PM so it does not run around
+  the clock.
+- Added runner schedule/stage-order tests and dashboard popup contract tests.
+
 ## 1.0.8 - Full-Range Dabento 1m Source
 
 - Added and normalized `glbx-mdp3-20100606-20260607.ohlcv-1m.csv` into full

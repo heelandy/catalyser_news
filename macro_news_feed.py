@@ -541,7 +541,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--max-items", type=int, default=40)
     p.add_argument("--lookback-hours", type=float, default=12.0)
     p.add_argument("--timeout", type=int, default=10)
-    p.add_argument("--cache-minutes", type=int, default=10)
+    p.add_argument("--cache-minutes", type=int, default=3)
     p.add_argument("--force", action="store_true")
     p.add_argument("--output", default="macro_news_feed.csv")
     p.add_argument("--context-output", default="macro_news_context.json")
