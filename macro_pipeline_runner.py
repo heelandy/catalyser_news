@@ -73,6 +73,21 @@ def market_config_summary(config: dict) -> dict:
     }
 
 
+def rotate_log_if_needed(log_file: Path | None, max_mb: float) -> None:
+    """Keep the runner log bounded: when it passes max_mb, move it to <name>.1 and start fresh."""
+    if not log_file or max_mb <= 0:
+        return
+    try:
+        if not log_file.exists() or log_file.stat().st_size < max_mb * 1024 * 1024:
+            return
+        backup = log_file.with_name(log_file.name + ".1")
+        if backup.exists():
+            backup.unlink()
+        log_file.rename(backup)
+    except OSError:
+        return
+
+
 def log(message: str, log_file: Path | None = None) -> None:
     line = f"[{now_iso()}] {message}"
     print(line, flush=True)
@@ -275,6 +290,33 @@ def build_stages(args: argparse.Namespace) -> list[Stage]:
             )
         )
 
+    if args.refresh_performance and not args.skip_recent_reactions:
+        stages.append(
+            Stage(
+                name="recent_reactions_refresh",
+                command=python_cmd(args, "macro_reaction_study.py")
+                + [
+                    "--events-file",
+                    args.recent_reactions_events_file,
+                    "--market-data",
+                    args.recent_reactions_market_data,
+                    "--symbol",
+                    "NQ",
+                    "--cluster-output",
+                    "studies/macro_event_clusters_yahoo_recent_5m.csv",
+                    "--reaction-output",
+                    "studies/macro_reactions_yahoo_recent_5m.csv",
+                    "--profile-output",
+                    "studies/macro_reaction_profiles_yahoo_recent_5m.csv",
+                    "--min-events",
+                    "1",
+                ],
+                required_inputs=[args.recent_reactions_events_file, args.recent_reactions_market_data],
+                expected_outputs=["studies/macro_reactions_yahoo_recent_5m.csv"],
+                optional=True,
+            )
+        )
+
     if args.refresh_performance:
         performance_command = python_cmd(args, "macro_signal_performance.py") + [
             "--signals",
@@ -295,6 +337,8 @@ def build_stages(args: argparse.Namespace) -> list[Stage]:
             args.grades_output,
             "--performance-output",
             args.performance_output,
+            "--grades-history-output",
+            args.grades_history_output,
         ]
         stages.append(
             Stage(
@@ -348,20 +392,26 @@ def build_stages(args: argparse.Namespace) -> list[Stage]:
         )
 
     if args.refresh_probability_validation:
+        validation_grades = (
+            args.grades_history_output
+            if args.grades_history_output and Path(args.grades_history_output).exists()
+            else args.grades_output
+        )
         stages.append(
             Stage(
                 name="probability_validation",
                 command=python_cmd(args, "macro_probability_validation.py")
                 + [
                     "--grades",
-                    args.grades_output,
+                    validation_grades,
                     "--summary-output",
                     args.probability_validation_report_output,
                     "--rows-output",
                     args.probability_validation_rows_output,
                 ],
-                required_inputs=[args.grades_output],
+                required_inputs=[validation_grades],
                 expected_outputs=[args.probability_validation_report_output, args.probability_validation_rows_output],
+                optional=True,
             )
         )
 
@@ -524,6 +574,10 @@ def run_alert_notifier(args: argparse.Namespace, root: Path, log_file: Path | No
         command.append("--scan-history")
     if args.alert_webhook_url:
         command += ["--webhook-url", args.alert_webhook_url]
+    if args.alert_discord_webhook_url:
+        command += ["--discord-webhook-url", args.alert_discord_webhook_url]
+    if args.alert_telegram_chat_id:
+        command += ["--telegram-chat-id", args.alert_telegram_chat_id]
     if args.alert_email_to:
         command += ["--email-to", args.alert_email_to]
     if args.alert_email_from:
@@ -595,6 +649,7 @@ def news_refresher_loop(
 
 def run_cycle(args: argparse.Namespace, root: Path, cycle: int) -> bool:
     log_file = Path(args.log_file) if args.log_file else None
+    rotate_log_if_needed(log_file, args.log_max_mb)
     stages = build_stages(args)
     status = {
         "cycle": cycle,
@@ -688,6 +743,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--stop-on-error", action="store_true", help="Stop a forever run after a failed cycle")
     p.add_argument("--dry-run", action="store_true", help="Print commands and validate inputs without running stages")
     p.add_argument("--log-file", default="macro_pipeline_runner.log")
+    p.add_argument("--log-max-mb", type=float, default=10.0, help="Rotate the log to <name>.1 when it grows past this size (0 disables)")
+    p.add_argument("--lock-file", default="macro_pipeline_runner.lock", help="PID lock so two live runners cannot overwrite the same outputs (empty disables)")
     p.add_argument("--status-output", default="macro_pipeline_status.json")
     p.add_argument("--skip-alerts", action="store_true", help="Do not run the separate alert detector after each cycle")
     p.add_argument("--alerts-output", default="macro_pipeline_alerts.csv")
@@ -698,12 +755,14 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--emit-initial-alerts", action="store_true", help="Emit new-signal alerts on the first alert detector snapshot")
     p.add_argument("--notify-alerts", action="store_true", help="Run the separate alert notifier after alert detection")
     p.add_argument("--alert-notify-config", default="macro_alert_notify_config.json", help="Optional notification config JSON")
-    p.add_argument("--notify-targets", default="", help="Comma-separated: console,bell,popup,webhook,email,risk_lock. Empty uses notifier config/default.")
+    p.add_argument("--notify-targets", default="", help="Comma-separated: console,bell,popup,webhook,discord,telegram,email,risk_lock. Empty uses notifier config/default.")
     p.add_argument("--alert-notify-state-output", default="macro_alert_notify_state.json")
     p.add_argument("--alert-notify-status-output", default="macro_alert_notify_status.json")
     p.add_argument("--alert-notify-min-severity", choices=["info", "medium", "high"], default="")
     p.add_argument("--alert-notify-scan-history", action="store_true")
     p.add_argument("--alert-webhook-url", default="")
+    p.add_argument("--alert-discord-webhook-url", default="", help="Discord webhook for alert notifications (token-free)")
+    p.add_argument("--alert-telegram-chat-id", default="", help="Telegram chat id; bot token comes from MACRO_ALERT_TELEGRAM_BOT_TOKEN or the notifier config")
     p.add_argument("--alert-email-to", default="")
     p.add_argument("--alert-email-from", default="")
     p.add_argument("--alert-email-subject", default="NQ macro catalyst alert")
@@ -750,6 +809,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--live-signal-output", default="macro_live_signal.csv")
 
     p.add_argument("--refresh-performance", action="store_true")
+    p.add_argument("--skip-recent-reactions", action="store_true", help="Do not rebuild the Yahoo recent-window reactions before performance grading")
+    p.add_argument("--recent-reactions-events-file", default="studies/macro_events_history_2010_2026_high.csv")
+    p.add_argument("--recent-reactions-market-data", default="data/NQ_5min_data.csv")
     p.add_argument("--refresh-quality", action="store_true", help="Run data-quality report after live updates")
     p.add_argument("--refresh-timing-audit", action="store_true", help="Run release/bar timing audit after live updates")
     p.add_argument("--refresh-probability-validation", action="store_true", help="Run probability validation from signal grades")
@@ -759,6 +821,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--performance-primary-window", type=int, default=60)
     p.add_argument("--neutral-threshold-pts", type=float, default=0.0)
     p.add_argument("--grades-output", default="macro_signal_grades.csv")
+    p.add_argument("--grades-history-output", default="macro_signal_grades_history.csv")
     p.add_argument("--performance-output", default="macro_signal_performance.csv")
     p.add_argument("--regime-context", default="macro_regime_context.json", help="Optional manual/news regime context JSON")
     p.add_argument("--generated-regime-context", default="macro_live_regime_context.json", help="Generated tape/news regime context JSON")
@@ -863,6 +926,68 @@ def normalize_args(args: argparse.Namespace) -> argparse.Namespace:
     return args
 
 
+def pid_running(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    if sys.platform == "win32":
+        # os.kill(pid, 0) is NOT a liveness probe on Windows (0 is CTRL_C_EVENT),
+        # so query the process handle instead.
+        import ctypes
+
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        STILL_ACTIVE = 259
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not handle:
+            return False
+        try:
+            exit_code = ctypes.c_ulong(0)
+            if not kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+                return False
+            return exit_code.value == STILL_ACTIVE
+        finally:
+            kernel32.CloseHandle(handle)
+    try:
+        import os
+
+        os.kill(pid, 0)
+        return True
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+
+
+def acquire_runner_lock(lock_path: Path, log_file: Path | None) -> bool:
+    """Refuse to start when another live runner already holds the lock."""
+    import os
+
+    if lock_path.exists():
+        try:
+            other_pid = int(lock_path.read_text(encoding="utf-8").strip() or 0)
+        except (ValueError, OSError):
+            other_pid = 0
+        if other_pid and other_pid != os.getpid() and pid_running(other_pid):
+            log(
+                f"Another live runner (PID {other_pid}) already holds {lock_path.name}; exiting to avoid duplicate output writes.",
+                log_file,
+            )
+            return False
+        log(f"Removing stale lock {lock_path.name} (PID {other_pid} is not running).", log_file)
+    lock_path.write_text(str(os.getpid()) + "\n", encoding="utf-8")
+    return True
+
+
+def release_runner_lock(lock_path: Path) -> None:
+    import os
+
+    try:
+        if lock_path.exists() and lock_path.read_text(encoding="utf-8").strip() == str(os.getpid()):
+            lock_path.unlink()
+    except OSError:
+        pass
+
+
 def parse_stop_at(value: str) -> tuple[int, int] | None:
     text = value.strip()
     if not text:
@@ -890,8 +1015,13 @@ def main() -> None:
     args = normalize_args(parse_args())
     root = Path.cwd()
     log_file = Path(args.log_file) if args.log_file else None
+    rotate_log_if_needed(log_file, args.log_max_mb)
     stop_at = parse_stop_at(args.stop_at)
     cycle = 1
+
+    lock_path = Path(args.lock_file) if args.lock_file and not args.dry_run else None
+    if lock_path is not None and not acquire_runner_lock(lock_path, log_file):
+        raise SystemExit(2)
 
     try:
         while True:
@@ -909,6 +1039,9 @@ def main() -> None:
             sleep_between_cycles(args.loop_seconds, log_file)
     except KeyboardInterrupt:
         log("Pipeline stopped by user", log_file)
+    finally:
+        if lock_path is not None:
+            release_runner_lock(lock_path)
 
 
 if __name__ == "__main__":

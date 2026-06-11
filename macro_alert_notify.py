@@ -91,10 +91,18 @@ def apply_config(args: argparse.Namespace, argv: list[str]) -> argparse.Namespac
     smtp = config.get("smtp") if isinstance(config.get("smtp"), dict) else {}
     risk_lock = config.get("risk_lock") if isinstance(config.get("risk_lock"), dict) else {}
     popup = config.get("popup") if isinstance(config.get("popup"), dict) else {}
+    discord = config.get("discord") if isinstance(config.get("discord"), dict) else {}
+    telegram = config.get("telegram") if isinstance(config.get("telegram"), dict) else {}
 
     nested_map = {
         "webhook_url": webhook.get("url"),
         "webhook_timeout": webhook.get("timeout"),
+        "discord_webhook_url": discord.get("webhook_url"),
+        "discord_timeout": discord.get("timeout"),
+        "telegram_bot_token": telegram.get("bot_token"),
+        "telegram_bot_token_env": telegram.get("bot_token_env"),
+        "telegram_chat_id": telegram.get("chat_id"),
+        "telegram_timeout": telegram.get("timeout"),
         "email_to": email.get("to"),
         "email_from": email.get("from"),
         "email_subject": email.get("subject"),
@@ -121,6 +129,12 @@ def apply_config(args: argparse.Namespace, argv: list[str]) -> argparse.Namespac
         "signals": ("--signals",),
         "webhook_url": ("--webhook-url",),
         "webhook_timeout": ("--webhook-timeout",),
+        "discord_webhook_url": ("--discord-webhook-url",),
+        "discord_timeout": ("--discord-timeout",),
+        "telegram_bot_token": ("--telegram-bot-token",),
+        "telegram_bot_token_env": ("--telegram-bot-token-env",),
+        "telegram_chat_id": ("--telegram-chat-id",),
+        "telegram_timeout": ("--telegram-timeout",),
         "email_to": ("--email-to",),
         "email_from": ("--email-from",),
         "email_subject": ("--email-subject",),
@@ -136,7 +150,7 @@ def apply_config(args: argparse.Namespace, argv: list[str]) -> argparse.Namespac
         "popup_seconds": ("--popup-seconds",),
         "popup_max_chars": ("--popup-max-chars",),
     }
-    int_fields = {"webhook_timeout", "smtp_port", "smtp_timeout", "popup_seconds", "popup_max_chars"}
+    int_fields = {"webhook_timeout", "discord_timeout", "telegram_timeout", "smtp_port", "smtp_timeout", "popup_seconds", "popup_max_chars"}
     bool_fields = {"scan_history", "smtp_starttls"}
 
     for field, names in option_names.items():
@@ -231,6 +245,54 @@ def webhook_notify(alerts: list[dict[str, Any]], args: argparse.Namespace) -> No
     response = requests.post(url, json=payload, timeout=args.webhook_timeout)
     if response.status_code >= 400:
         raise RuntimeError(f"webhook returned {response.status_code}: {response.text[:300]}")
+
+
+def chunk_text(text: str, limit: int) -> list[str]:
+    chunks: list[str] = []
+    remaining = text
+    while remaining:
+        if len(remaining) <= limit:
+            chunks.append(remaining)
+            break
+        cut = remaining.rfind("\n", 0, limit)
+        if cut <= 0:
+            cut = limit
+        chunks.append(remaining[:cut])
+        remaining = remaining[cut:].lstrip("\n")
+    return chunks or [text]
+
+
+def discord_notify(alerts: list[dict[str, Any]], args: argparse.Namespace) -> None:
+    url = args.discord_webhook_url or os.environ.get("MACRO_ALERT_DISCORD_WEBHOOK_URL", "")
+    if not url:
+        raise RuntimeError("discord target requires --discord-webhook-url or MACRO_ALERT_DISCORD_WEBHOOK_URL")
+
+    import requests
+
+    text = "\n\n".join(format_alert(alert) for alert in alerts)
+    for chunk in chunk_text(text, 1900):
+        response = requests.post(url, json={"content": chunk}, timeout=args.discord_timeout)
+        if response.status_code >= 400:
+            raise RuntimeError(f"discord webhook returned {response.status_code}: {response.text[:300]}")
+
+
+def telegram_notify(alerts: list[dict[str, Any]], args: argparse.Namespace) -> None:
+    token = args.telegram_bot_token or os.environ.get(args.telegram_bot_token_env, "")
+    chat_id = args.telegram_chat_id or os.environ.get("MACRO_ALERT_TELEGRAM_CHAT_ID", "")
+    if not token or not chat_id:
+        raise RuntimeError(
+            "telegram target requires a bot token (--telegram-bot-token or env "
+            f"{args.telegram_bot_token_env}) and a chat id (--telegram-chat-id or MACRO_ALERT_TELEGRAM_CHAT_ID)"
+        )
+
+    import requests
+
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    text = "\n\n".join(format_alert(alert) for alert in alerts)
+    for chunk in chunk_text(text, 3900):
+        response = requests.post(url, json={"chat_id": chat_id, "text": chunk}, timeout=args.telegram_timeout)
+        if response.status_code >= 400:
+            raise RuntimeError(f"telegram api returned {response.status_code}: {response.text[:300]}")
 
 
 def email_body(alerts: list[dict[str, Any]]) -> str:
@@ -384,6 +446,10 @@ def send_to_targets(alerts: list[dict[str, Any]], targets: list[str], args: argp
                 bell_notify(alerts)
             elif target == "webhook":
                 webhook_notify(alerts, args)
+            elif target == "discord":
+                discord_notify(alerts, args)
+            elif target == "telegram":
+                telegram_notify(alerts, args)
             elif target == "email":
                 email_notify(alerts, args)
             elif target == "risk_lock":
@@ -405,13 +471,21 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--signals", default="macro_live_signal_current.csv")
     p.add_argument("--state", default="macro_alert_notify_state.json")
     p.add_argument("--status-output", default="macro_alert_notify_status.json")
-    p.add_argument("--targets", default=DEFAULT_TARGETS, help="Comma-separated: console,bell,popup,webhook,email,risk_lock")
+    p.add_argument("--targets", default=DEFAULT_TARGETS, help="Comma-separated: console,bell,popup,webhook,discord,telegram,email,risk_lock")
     p.add_argument("--min-severity", choices=["info", "medium", "high"], default="info")
     p.add_argument("--scan-history", action="store_true", help="Scan the full alert CSV instead of only the latest summary alerts")
     p.add_argument("--dry-run", action="store_true")
 
     p.add_argument("--webhook-url", default="")
     p.add_argument("--webhook-timeout", type=int, default=10)
+
+    p.add_argument("--discord-webhook-url", default="", help="Discord channel webhook URL (or MACRO_ALERT_DISCORD_WEBHOOK_URL)")
+    p.add_argument("--discord-timeout", type=int, default=10)
+
+    p.add_argument("--telegram-bot-token", default="", help="Telegram bot token; prefer the env var for secrecy")
+    p.add_argument("--telegram-bot-token-env", default="MACRO_ALERT_TELEGRAM_BOT_TOKEN")
+    p.add_argument("--telegram-chat-id", default="", help="Telegram chat id (or MACRO_ALERT_TELEGRAM_CHAT_ID)")
+    p.add_argument("--telegram-timeout", type=int, default=10)
 
     p.add_argument("--email-to", default="")
     p.add_argument("--email-from", default="")

@@ -206,6 +206,15 @@ function plainNumber(value) {
   return Math.abs(n) >= 100 ? n.toFixed(0) : n.toFixed(2);
 }
 
+function surpriseText(value) {
+  const n = numberValue(value);
+  if (!Number.isFinite(n)) {
+    return clean(value);
+  }
+  const sign = n > 0 ? "+" : "";
+  return sign + n.toLocaleString("en-US", { maximumFractionDigits: 2 });
+}
+
 function parseReleaseDate(value) {
   const text = clean(value, "");
   if (!text) {
@@ -964,15 +973,29 @@ function renderProbabilityChart() {
   `;
 }
 
+function rowSummaryTitle(row) {
+  return [
+    clean(row.title),
+    `${titleCase(row.direction)} ${percent(row.bull, 0)} bull`,
+    `confidence ${percent(row.confidence, 0)}`,
+    displayTradeState(row),
+    titleCase(row.status),
+  ].join(" | ");
+}
+
 function renderSignals() {
   const rows = sortRows(filteredSignals());
   if (!state.selectedId && rows.length) {
     state.selectedId = rows[0].id;
   }
 
+  const wrap = els.signalsBody.closest(".table-wrap");
+  const scrollTop = wrap ? wrap.scrollTop : 0;
+  const scrollLeft = wrap ? wrap.scrollLeft : 0;
+
   els.signalsBody.innerHTML = rows.length
     ? rows.map((row) => `
-      <tr data-id="${escapeHtml(row.id)}" class="${row.id === state.selectedId ? "selected" : ""}">
+      <tr data-id="${escapeHtml(row.id)}" class="${row.id === state.selectedId ? "selected" : ""}" title="${escapeHtml(rowSummaryTitle(row))}">
         <td title="${escapeHtml(formatTimeTitle(row.release_time))}">${formatTime(row.release_time)}</td>
         <td>
           <div class="title-cell">
@@ -991,7 +1014,65 @@ function renderSignals() {
     `).join("")
     : '<tr><td colspan="9"><div class="empty">No matching signals</div></td></tr>';
 
+  if (wrap) {
+    wrap.scrollTop = scrollTop;
+    wrap.scrollLeft = scrollLeft;
+  }
+
   renderDetail();
+}
+
+function selectSignalRow(id, options = {}) {
+  if (!id || id === state.selectedId) {
+    if (options.refreshDetail) {
+      renderDetail();
+    }
+    return;
+  }
+  state.selectedId = id;
+  els.signalsBody.querySelectorAll("tr.selected").forEach((tr) => tr.classList.remove("selected"));
+  const row = Array.from(els.signalsBody.querySelectorAll("tr[data-id]")).find((tr) => tr.dataset.id === id);
+  if (row) {
+    row.classList.add("selected");
+    if (options.scrollIntoView) {
+      row.scrollIntoView({ block: "nearest" });
+    }
+  }
+  renderDetail();
+}
+
+function openSignalPopup(row) {
+  if (!row) {
+    return;
+  }
+  const detailParts = [
+    `Actual ${clean(row.actual)} vs forecast ${clean(row.forecast)} (previous ${clean(row.previous)}), surprise ${surpriseText(row.surprise)}.`,
+    clean(row.trade_state_reason || row.live_market_regime_reason, ""),
+  ].filter(Boolean);
+  popupState.queue.unshift({
+    alert_time: new Date().toISOString(),
+    alert_type: "signal_detail",
+    severity: row.regimeConflict !== "none" ? "high" : "info",
+    title: clean(row.title),
+    release_time: row.release_time,
+    catalyst_category: row.catalyst_category,
+    current_direction: row.direction,
+    current_bullish_probability: row.bull,
+    current_confidence: row.confidence,
+    current_status: row.status,
+    message: detailParts.join(" "),
+  });
+  showNextAlertPopup();
+}
+
+function moveSelection(step) {
+  const rows = sortRows(filteredSignals());
+  if (!rows.length) {
+    return;
+  }
+  const index = rows.findIndex((row) => row.id === state.selectedId);
+  const next = rows[Math.max(0, Math.min(rows.length - 1, (index === -1 ? 0 : index + step)))];
+  selectSignalRow(next.id, { scrollIntoView: true });
 }
 
 function detailDatum(label, value) {
@@ -1042,7 +1123,7 @@ function renderDetail() {
       ${detailDatum("Actual", row.actual)}
       ${detailDatum("Forecast", row.forecast)}
       ${detailDatum("Previous", row.previous)}
-      ${detailDatum("Surprise", points(row.surprise, 2))}
+      ${detailDatum("Surprise", surpriseText(row.surprise))}
       ${detailDatum("Release Rule", row.releaseRuleLabel)}
       ${detailDatum("Live Regime", titleCase(row.live_market_regime))}
       ${detailDatum("Trade State", titleCase(row.tradeState))}
@@ -1283,10 +1364,43 @@ function bindEvents() {
     if (!row) {
       return;
     }
-    state.selectedId = row.dataset.id;
-    renderSignals();
+    selectSignalRow(row.dataset.id);
     if (window.matchMedia("(max-width: 1100px)").matches) {
       els.detailPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  });
+
+  els.signalsBody.addEventListener("dblclick", (event) => {
+    const row = event.target.closest("tr[data-id]");
+    if (!row) {
+      return;
+    }
+    selectSignalRow(row.dataset.id);
+    openSignalPopup(state.signals.find((item) => item.id === row.dataset.id));
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (state.activeTab !== "signals") {
+      return;
+    }
+    const target = event.target;
+    if (target && (target.tagName === "INPUT" || target.tagName === "SELECT" || target.tagName === "TEXTAREA")) {
+      return;
+    }
+    if (!els.alertPopupLayer.hidden && event.key === "Escape") {
+      event.preventDefault();
+      showNextAlertPopup();
+      return;
+    }
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      moveSelection(1);
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      moveSelection(-1);
+    } else if (event.key === "Enter" && state.selectedId) {
+      event.preventDefault();
+      openSignalPopup(state.signals.find((item) => item.id === state.selectedId));
     }
   });
 

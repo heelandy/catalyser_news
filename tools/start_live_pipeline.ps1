@@ -48,6 +48,8 @@ if ($existingRunner.Count -gt 0) {
         ".\macro_pipeline_runner.py",
         "--run-forever",
         "--watch-releases",
+        "--refresh-performance",
+        "--refresh-probability-validation",
         "--loop-seconds", "$LoopSeconds"
     )
     if ($StopAt) {

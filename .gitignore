@@ -18,6 +18,8 @@ env/
 .env
 .env.*
 *.log
+*.log.1
+macro_pipeline_runner.lock
 *_github_upload.zip
 macro_pipeline_status.json
 macro_pipeline_alerts.csv

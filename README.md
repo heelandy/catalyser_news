@@ -73,6 +73,22 @@ dashboard is live, the pipeline runs every trading day from 7:00 AM to
 - Python 3.11 or newer from https://www.python.org/downloads/ (check "Add
   python.exe to PATH" during install).
 - Git from https://git-scm.com/download/win (only needed for cloning).
+- Allow local PowerShell scripts (one time, no admin needed). Without this,
+  running any `.ps1` directly fails with "running scripts is disabled on this
+  system":
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+```
+
+Command syntax note: the `powershell -NoProfile -ExecutionPolicy Bypass -File ...`
+one-liners in this README are written for cmd / Run / double-click use. Inside
+an already-open PowerShell window, either keep the leading `powershell` word
+or (after the one-time policy change above) just run the script directly:
+
+```powershell
+.\tools\status_live_pipeline.ps1
+```
 
 ### Step 2 - Clone the repository
 
@@ -102,7 +118,7 @@ and `.\.venv\Scripts\Activate.ps1`.)
 ### Step 4 - Register the daily schedule (one time)
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\setup_schedule.ps1
+.\tools\setup_schedule.ps1
 ```
 
 This registers two Windows Task Scheduler tasks:
@@ -120,7 +136,7 @@ Use `tools\setup_schedule.ps1 -Remove` to unregister both tasks.
 Double-click `START.bat` in the project folder, or run:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\start_live_pipeline.ps1
+.\tools\start_live_pipeline.ps1
 ```
 
 This single command starts the hidden dashboard web server and the live
@@ -145,16 +161,38 @@ stopped or outside its daily window.
 ### Step 7 - Verify
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\status_live_pipeline.ps1
+.\tools\status_live_pipeline.ps1
 python -m unittest discover -s tests -q
 ```
 
 The status script shows whether the runner and dashboard are up, the latest
-`macro_pipeline_status.json`, and the last log lines. To stop things manually:
+`macro_pipeline_status.json`, and the last log lines.
+
+### Start / stop commands
+
+Double-click files (no terminal needed):
+
+- `START.bat` - start the dashboard and the runner (skips anything running).
+- `STOP.bat` - stop the runner; the dashboard stays up.
+
+Same thing from a PowerShell window in the project folder (after the one-time
+`Set-ExecutionPolicy` from Step 1):
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\stop_live_pipeline.ps1                      # stop the runner
-powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\stop_live_pipeline.ps1 -IncludeDashboard    # stop everything
+.\tools\start_live_pipeline.ps1                      # start everything
+.\tools\stop_live_pipeline.ps1                       # stop the runner
+.\tools\stop_live_pipeline.ps1 -IncludeDashboard     # stop everything
+.\tools\status_live_pipeline.ps1                     # status
+```
+
+Drive the registered Task Scheduler tasks directly:
+
+```powershell
+schtasks /Run /TN "NQ Catalyst Pipeline Start"      # fire the start task now
+schtasks /Run /TN "NQ Catalyst Pipeline Stop"       # fire the stop task now
+schtasks /Query /TN "NQ Catalyst Pipeline Start"    # see status and next run time
+schtasks /Change /TN "NQ Catalyst Pipeline Start" /DISABLE   # pause the daily schedule
+schtasks /Change /TN "NQ Catalyst Pipeline Start" /ENABLE    # resume it
 ```
 
 ### What a fresh clone does and does not include
@@ -193,7 +231,20 @@ Operational notes:
 - The runner refreshes Yahoo market data in a throttled, non-fatal stage every
   `--market-refresh-minutes` (default 5) so the live tape regime component has
   current bars. `active_market_data_file` points at `data/NQ_5min_data.csv`;
-  the Dabento files remain the historical study source in `studies/`.
+  the Dabento files remain the historical study source in `studies/`. Yahoo is
+  the live data source until refreshed Dabento 1m exports are provided.
+- The runner rotates its log at `--log-max-mb` (default 10 MB, backup kept as
+  `macro_pipeline_runner.log.1`) and holds a PID lock
+  (`macro_pipeline_runner.lock`) so a second runner cannot start by accident.
+- The live loop now grades releases automatically: every graded release
+  accumulates in `macro_signal_grades_history.csv` and probability validation
+  reports on that history, so prediction accuracy can be tracked over time.
+- Alert notifications support console, bell, popup, webhook, Discord,
+  Telegram, email, and a risk-lock file. Set Discord/Telegram credentials in
+  `macro_alert_notify_config.json` (see the example file) or via
+  `MACRO_ALERT_DISCORD_WEBHOOK_URL`, `MACRO_ALERT_TELEGRAM_BOT_TOKEN`, and
+  `MACRO_ALERT_TELEGRAM_CHAT_ID`, then start the runner with
+  `--notify-alerts --notify-targets popup,discord,telegram`.
 - The dashboard reloads its data every 30 seconds and pops up a styled alert
   card when a new alert (less than 30 minutes old) appears in
   `macro_pipeline_alert_summary.json`. Open

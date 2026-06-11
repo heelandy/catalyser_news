@@ -35,6 +35,25 @@ class DashboardContractTests(unittest.TestCase):
         self.assertIn(".popup-caution", styles)
         self.assertIn(".stale-banner", styles)
 
+    def test_dashboard_master_detail_interactions(self):
+        app = (ROOT / "dashboard" / "app.js").read_text(encoding="utf-8")
+        styles = (ROOT / "dashboard" / "styles.css").read_text(encoding="utf-8")
+
+        # Fixed overlays with their own display value override the hidden
+        # attribute and silently shield the page from clicks/scroll, so every
+        # such element needs an explicit [hidden] display:none rule.
+        self.assertIn(".alert-popup-layer[hidden]", styles)
+        self.assertIn(".stale-banner[hidden]", styles)
+
+        self.assertIn("selectSignalRow", app)
+        self.assertIn("openSignalPopup", app)
+        self.assertIn("moveSelection", app)
+        self.assertIn("dblclick", app)
+        self.assertIn("ArrowDown", app)
+        self.assertIn("surpriseText", app)
+        self.assertIn("scrollTop", app)
+        self.assertIn("max-height: calc(100vh - 120px)", styles)
+
     def test_dashboard_asset_versions_are_present(self):
         html = (ROOT / "dashboard" / "index.html").read_text(encoding="utf-8")
 

@@ -14,6 +14,16 @@
     "url": "",
     "timeout": 10
   },
+  "discord": {
+    "webhook_url": "",
+    "timeout": 10
+  },
+  "telegram": {
+    "bot_token": "",
+    "bot_token_env": "MACRO_ALERT_TELEGRAM_BOT_TOKEN",
+    "chat_id": "",
+    "timeout": 10
+  },
   "email": {
     "to": "",
     "from": "",

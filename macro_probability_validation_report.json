@@ -1,19 +1,19 @@
 {
-  "grades_file": "macro_signal_grades.csv",
+  "grades_file": "macro_signal_grades_history.csv",
   "notes": [
     "calibration_error is avg predicted bullish probability minus actual bullish rate",
     "brier_bullish is lower when probability forecasts are better calibrated"
   ],
   "overall": {
-    "actual_bullish_rate": 0.5,
-    "avg_confidence": 0.3397534523809524,
-    "avg_predicted_bullish_probability": 0.4441064606227106,
-    "avg_probability_edge": 0.1623620787545789,
-    "brier_bullish": 0.2189451078846498,
-    "calibration_error": -0.055893539377289414,
-    "directional_sample_size": 24,
-    "primary_direction_accuracy": 0.20833333333333334,
-    "sample_size": 24
+    "actual_bullish_rate": 0.0,
+    "avg_confidence": 0.2961384976525821,
+    "avg_predicted_bullish_probability": 0.5274908935713931,
+    "avg_probability_edge": 0.08569482152885126,
+    "brier_bullish": 0.28190012578515583,
+    "calibration_error": 0.5274908935713931,
+    "directional_sample_size": 6,
+    "primary_direction_accuracy": 0.0,
+    "sample_size": 6
   },
   "probability_bins": [
     0.0,
@@ -25,5 +25,5 @@
     0.7,
     1.0
   ],
-  "rows_loaded": 24
+  "rows_loaded": 6
 }

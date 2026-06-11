@@ -1,12 +1,51 @@
 # Changelog
 
+## 1.1.1 - Operational Hardening and Notifications
+
+- Added size-based log rotation: when `macro_pipeline_runner.log` passes
+  `--log-max-mb` (default 10 MB) it is moved to `macro_pipeline_runner.log.1`
+  and a fresh log starts, so disk use stays bounded at roughly twice the cap
+  while the most recent history is always preserved.
+- Added a PID lock (`macro_pipeline_runner.lock`): a second live runner now
+  exits immediately instead of silently overwriting the same output files;
+  stale locks from dead processes are cleared automatically.
+- Accuracy tracking for the new deep-history profiles:
+  `macro_signal_performance.py` now appends every graded release to
+  `macro_signal_grades_history.csv` (deduped per release/source), probability
+  validation runs on that accumulating history, and the start script enables
+  `--refresh-performance --refresh-probability-validation` in the live loop so
+  grading happens automatically as releases print.
+- Added Discord and Telegram notification targets to `macro_alert_notify.py`
+  alongside webhook/email/popup/risk-lock. Configure in
+  `macro_alert_notify_config.json` (`discord.webhook_url`,
+  `telegram.bot_token`/`chat_id`) or via env vars
+  `MACRO_ALERT_DISCORD_WEBHOOK_URL`, `MACRO_ALERT_TELEGRAM_BOT_TOKEN`,
+  `MACRO_ALERT_TELEGRAM_CHAT_ID`. Long messages are chunked to each
+  platform's limit.
+- Added focused UTC release-timing tests (the fast news window math), plus
+  lock, rotation, and notifier chunking tests.
+- Added `tools/tape_signal_listener.py`: receives TradingView HIGHSTRIKE Pine
+  alert webhooks (ORB on NQ, options on SPY/QQQ) and writes
+  `macro_tape_signals.json` for the live regime builder. Repaired two example
+  JSON files that contained patch artifacts.
+- Master-detail dashboard polish: selection no longer resets table scroll,
+  double-click/Enter opens the expanded popup card, Arrow keys navigate rows,
+  the detail panel scrolls independently, and surprise values display as
+  signed thousands (`+100,000`).
+
 ## 1.1.0 - Deep History, Live Tape, News Quality
 
 - Rebuilt the macro reaction studies on the full 2010-2026 TradingView
-  high-importance release history (fetched in 30-day chunks) against the
-  full-range Dabento 1m/5m/60m data, replacing the 2024-2026-only sample that
-  produced low-significance profiles. Live calibration and performance grading
-  now point at the deep-history artifacts.
+  high-importance release history (3,824 events, 2,784 clustered release
+  moments vs 282 before) against the full-range Dabento 1m/5m/60m data. Live
+  calibration now runs on profile groups with hundreds of samples (for
+  example 334 jobless-claims releases) instead of single digits.
+- Added a Yahoo recent-window reaction file
+  (`studies/macro_reactions_yahoo_recent_5m.csv`) so releases after the static
+  Dabento cutoff can still be graded; the runner rebuilds it automatically
+  before performance grading (`--refresh-performance`), and
+  `macro_signal_performance.py` now keeps its previous outputs instead of
+  crashing when no current signal has graded reactions yet.
 - Re-enabled the live market tape: the runner now refreshes Yahoo 5m data in a
   throttled, non-fatal `market_data_refresh` stage (`--market-refresh-minutes`,
   default 5) and `active_market_data_file` points at `data/NQ_5min_data.csv`,

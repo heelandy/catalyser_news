@@ -199,6 +199,8 @@ def build_grades(
 
 def summarize_accuracy(grades: pd.DataFrame, windows: list[int]) -> pd.DataFrame:
     rows = []
+    if grades.empty:
+        return pd.DataFrame(rows)
     group_specs = [
         ("overall", []),
         ("reaction_source", ["reaction_source"]),
@@ -252,7 +254,34 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--neutral-threshold-pts", type=float, default=0.0)
     p.add_argument("--grades-output", default="macro_signal_grades.csv")
     p.add_argument("--performance-output", default="macro_signal_performance.csv")
+    p.add_argument(
+        "--grades-history-output",
+        default="macro_signal_grades_history.csv",
+        help="Accumulating graded-release history for long-run accuracy tracking (empty disables)",
+    )
     return p.parse_args()
+
+
+def merge_grades_history(history_path: Path, grades: pd.DataFrame) -> int:
+    """Append new graded releases, replacing rows for the same release/source pair."""
+    key_cols = ["release_time", "title", "reaction_source"]
+    new = grades.copy()
+    new["graded_at"] = pd.Timestamp.now().isoformat(timespec="seconds")
+    if history_path.exists():
+        try:
+            history = pd.read_csv(history_path)
+        except Exception:
+            history = pd.DataFrame()
+        if not history.empty:
+            combined = pd.concat([history, new], ignore_index=True)
+        else:
+            combined = new
+    else:
+        combined = new
+    combined["release_time"] = combined["release_time"].astype(str)
+    combined = combined.drop_duplicates(subset=key_cols, keep="last").sort_values("release_time")
+    combined.to_csv(history_path, index=False)
+    return len(combined)
 
 
 def main() -> None:
@@ -268,8 +297,18 @@ def main() -> None:
     reactions = pd.concat(reaction_frames, ignore_index=True)
 
     grades = build_grades(signals, reactions, windows, args.primary_window_minutes, args.neutral_threshold_pts)
+    if grades.empty:
+        print(
+            "No graded rows: current signals have no released reactions inside market-data coverage yet. "
+            f"Keeping the existing {args.grades_output} and {args.performance_output} unchanged."
+        )
+        return
     grades.to_csv(args.grades_output, index=False)
     print(f"Wrote {len(grades)} graded signal rows to {args.grades_output}.")
+
+    if args.grades_history_output:
+        total = merge_grades_history(Path(args.grades_history_output), grades)
+        print(f"Grades history now holds {total} graded rows in {args.grades_history_output}.")
 
     performance = summarize_accuracy(grades, windows)
     performance.to_csv(args.performance_output, index=False)

@@ -10,12 +10,3 @@
     }
   ]
 }
-*** Add File: macro_alert_notify_config.json
-{
-  "targets": "risk_lock",
-  "min_severity": "medium",
-  "risk_lock": {
-    "output": "macro_alert_risk_lock.json",
-    "severity": "medium"
-  }
-}

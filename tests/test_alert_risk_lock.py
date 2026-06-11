@@ -7,6 +7,27 @@ import macro_alert_notify as notify
 import macro_pipeline_alerts as alerts
 
 
+class NotifyTargetTests(unittest.TestCase):
+    def test_discord_and_telegram_targets_are_dispatchable(self):
+        source = Path(notify.__file__).read_text(encoding="utf-8")
+        self.assertIn('elif target == "discord":', source)
+        self.assertIn('elif target == "telegram":', source)
+
+    def test_chunk_text_splits_on_line_boundaries(self):
+        text = "\n".join(f"alert line {i} " + "x" * 40 for i in range(20))
+        chunks = notify.chunk_text(text, 200)
+        self.assertGreater(len(chunks), 1)
+        self.assertTrue(all(len(chunk) <= 200 for chunk in chunks))
+        self.assertEqual("\n".join(chunks).replace("\n", ""), text.replace("\n", ""))
+
+    def test_missing_discord_url_raises_clear_error(self):
+        import argparse
+
+        args = argparse.Namespace(discord_webhook_url="", discord_timeout=5)
+        with self.assertRaises(RuntimeError):
+            notify.discord_notify([{"severity": "high", "alert_type": "t", "title": "x", "message": "m"}], args)
+
+
 class AlertRiskLockTests(unittest.TestCase):
     def test_signal_risk_lock_detects_release_positive_live_bearish(self):
         with tempfile.TemporaryDirectory() as tmp:
