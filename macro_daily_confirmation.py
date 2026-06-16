@@ -21,6 +21,7 @@ import numpy as np
 import pandas as pd
 
 from macro_regime import apply_regime_to_frame, load_regime_context
+from macro_subscriber_fields import enrich_signal_frame
 
 
 MATCH_ORDER = [
@@ -46,6 +47,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--sample-prior", type=float, default=12.0)
     p.add_argument("--regime-context", default="macro_regime_context.json", help="Optional manual/news regime context JSON")
     p.add_argument("--generated-regime-context", default="macro_live_regime_context.json", help="Generated tape/news regime context JSON")
+    p.add_argument("--market-data", default="data/NQ_5min_data.csv", help="Live market data CSV used for subscriber watch levels")
     return p.parse_args()
 
 
@@ -300,6 +302,7 @@ def main() -> None:
     output = pd.DataFrame(rows)
     regime_context = load_regime_context(args.regime_context, output.to_dict("records"), args.generated_regime_context)
     output = apply_regime_to_frame(output, regime_context, args.bullish_threshold, args.bearish_threshold)
+    output = enrich_signal_frame(output, args.market_data)
     output.to_csv(args.output, index=False)
     report = build_report(output, args)
     Path(args.summary_output).write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")

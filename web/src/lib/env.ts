@@ -22,6 +22,8 @@ const serverEnvSchema = z.object({
   STRIPE_WEBHOOK_SECRET: optionalString(),
   RESEND_API_KEY: optionalString(),
   TELEGRAM_BOT_TOKEN: optionalString(),
+  TELEGRAM_BOT_USERNAME: optionalString(),
+  TELEGRAM_WEBHOOK_SECRET: optionalString(32),
   DISCORD_WEBHOOK_SECRET: optionalString(),
 });
 

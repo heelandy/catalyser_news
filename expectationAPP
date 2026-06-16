@@ -65,12 +65,24 @@ These capabilities already exist locally and should be reused.
   technology, risk-on, and risk-off language.
 - [x] Deduplicate repeated headlines.
 - [x] Discount stale and low-signal news.
-- [ ] Add explicit earnings-calendar ingestion and earnings surprise handling.
-- [ ] Add durable source health metrics and provider failover history.
+- [x] Add explicit earnings-calendar ingestion and earnings surprise handling.
+- [x] Add durable source health metrics and provider failover history.
 
 Evidence: `catalyser_news.py`, `macro_news_feed.py`,
 `macro_pipeline_runner.py`, `tests/test_news_feed.py`, and
 `tests/test_release_timing.py`.
+
+Evidence 2026-06-16: added `macro_earnings_calendar.py` for NQ-relevant Yahoo
+earnings calendar rows and EPS surprise values, updated `catalyser_news.py` to
+treat earnings surprises as higher-is-bullish and merge `--macro-extra-file`
+rows into `macro_releases.csv`, and wired `macro_pipeline_runner.py` to refresh
+earnings every 120 minutes by default. Added `macro_source_health.py` and wired
+news/calendar/earnings provider attempts into `macro_source_health.json` and
+`macro_source_health_history.jsonl`. Verified with
+`python -m py_compile .\macro_source_health.py .\macro_earnings_calendar.py .\catalyser_news.py .\macro_news_feed.py .\macro_pipeline_runner.py`,
+`python -m unittest tests.test_earnings_calendar tests.test_source_health tests.test_runner_schedule`,
+`python -m unittest discover -s tests`, and
+`python .\macro_pipeline_runner.py --dry-run`.
 
 ### Market Reaction Engine
 
@@ -81,17 +93,26 @@ Evidence: `catalyser_news.py`, `macro_news_feed.py`,
 - [x] Produce trade state and regime-conflict warnings.
 - [x] Use historical reaction profiles and trust adjustments.
 - [x] Use tape/news confirmation instead of relying only on the release value.
-- [ ] Produce a concise subscriber-ready event summary for every alert.
-- [ ] Produce a standardized expected NQ/Nasdaq/stock-market effect field.
-- [ ] Produce a standardized risk level field for every alert.
-- [ ] Produce suggested watch levels from live market data.
-- [ ] Produce an invalidation scenario for every directional alert.
-- [ ] Produce a time-sensitivity/expiry field for every alert.
-- [ ] Attach the educational disclaimer to every stored and delivered alert.
+- [x] Produce a concise subscriber-ready event summary for every alert.
+- [x] Produce a standardized expected NQ/Nasdaq/stock-market effect field.
+- [x] Produce a standardized risk level field for every alert.
+- [x] Produce suggested watch levels from live market data.
+- [x] Produce an invalidation scenario for every directional alert.
+- [x] Produce a time-sensitivity/expiry field for every alert.
+- [x] Attach the educational disclaimer to every stored and delivered alert.
 
 Evidence: `macro_reaction_study.py`, `macro_signal_trust.py`,
 `macro_regime.py`, `macro_live_regime_builder.py`, and
 `macro_daily_confirmation.py`.
+
+Evidence 2026-06-16: added `macro_subscriber_fields.py`, wired
+`macro_daily_confirmation.py` and `macro_pipeline_runner.py` to enrich
+`macro_live_signal_current.csv` with `subscriber_summary`,
+`expected_market_effect`, `standardized_risk_level`, `watch_levels_json`,
+`invalidation_scenario`, `expires_at`, `time_sensitivity`, and
+`educational_disclaimer`. Updated `macro_web_ingest.py` to prefer those engine
+fields when creating canonical web payloads. Verified with
+`python -m unittest discover -s tests`.
 
 ### Local Alert Delivery
 
@@ -305,8 +326,8 @@ portal configuration.
 - [x] View eligible catalyst alert history.
 - [x] Enforce delayed/limited summaries for Free users.
 - [x] Manage email alert preference.
-- [ ] Connect and disconnect Telegram.
-- [ ] Connect and disconnect Discord.
+- [x] Connect and disconnect Telegram.
+- [x] Connect and disconnect Discord.
 - [x] Select event families, symbols, minimum confidence, risk levels, quiet
   hours, and preferred channels.
 - [x] Show channel verification and recent delivery status.
@@ -320,9 +341,11 @@ subscription state, trial/grace/period end date, Stripe Checkout buttons,
 Customer Portal entry, invoice rows, receipt links, and eligible alert history.
 Preferences save to `AlertPreference` through a server action and gate
 Email/Telegram/Discord by plan entitlement. Free users only see sent alerts
-after their plan delay and within their limited history window. Telegram and
-Discord connection flows remain pending for Phase 8; the dashboard only shows
-their availability and verification state for now.
+after their plan delay and within their limited history window. Telegram
+connection and disconnection are implemented with short-code verification.
+Discord connection and disconnection are implemented with a dashboard webhook
+URL form, live Discord test message, encrypted webhook-token storage, and masked
+webhook ID display.
 
 ## Phase 6 - Admin Dashboard and Approval Workflow
 
@@ -407,10 +430,10 @@ after the Phase 8 queue wiring.
 
 - [x] Use Resend or SendGrid for production email.
 - [ ] Keep SMTP available only as a local development fallback.
-- [ ] Implement verified Telegram connection flow.
-- [ ] Validate Telegram webhook authenticity and expected bot/chat ownership.
-- [ ] Implement secure Discord connection/webhook flow.
-- [ ] Protect stored channel credentials/tokens.
+- [x] Implement verified Telegram connection flow.
+- [x] Validate Telegram webhook authenticity and expected bot/chat ownership.
+- [x] Implement secure Discord connection/webhook flow.
+- [x] Protect stored channel credentials/tokens.
 - [x] Resolve plan entitlements before queueing each delivery.
 - [x] Apply subscriber preferences before queueing each delivery.
 - [x] Apply Basic daily alert limits.
@@ -433,8 +456,12 @@ invalidation, and disclaimer. `web/src/lib/delivery-dispatch.ts` processes due
 email attempts through Resend, marks `SENT`, `FAILED`, `SKIPPED`, or
 `DEAD_LETTER`, stores provider IDs and failure categories, moves the parent
 alert to `SENT` after the first accepted email, schedules exponential retries,
-and keeps processing other subscribers if one delivery fails. Real
-Telegram/Discord connection flows are still pending.
+and keeps processing other subscribers if one delivery fails. Telegram
+connections now use a dashboard-generated six-digit code, HMAC-only code
+storage, Telegram secret-token webhook validation, 15-minute expiry, and chat ID
+ownership proof before marking a connection verified. Discord connections use a
+subscriber-provided Discord webhook URL, live test message validation, encrypted
+token storage, duplicate active-webhook prevention, and disconnect support.
 
 Evidence 2026-06-15: implemented `web/src/lib/delivery-policy.ts`,
 `web/src/lib/delivery-queue.ts`, `web/src/lib/delivery-policy.test.ts`, and
@@ -448,6 +475,17 @@ Evidence 2026-06-15: implemented `web/src/lib/delivery-dispatch.ts`,
 and the `npm run delivery:process` command. Verified with `npm run check`,
 `npm run delivery:process -- --dry-run --limit 5`, and
 `python -m unittest discover -s tests`.
+
+Evidence 2026-06-16: implemented `web/src/lib/telegram-connection.ts`,
+`web/src/lib/telegram-connection.test.ts`,
+`web/src/app/api/integrations/telegram/webhook/route.ts`, Telegram
+connect/disconnect account actions, and the `/account/preferences` Telegram
+controls. Verified with `npm run check`.
+
+Evidence 2026-06-16: implemented `web/src/lib/discord-connection.ts`,
+`web/src/lib/discord-connection.test.ts`, Discord connect/disconnect account
+actions, encrypted Discord webhook-token storage, masked webhook ID display, and
+the `/account/preferences` Discord controls. Verified with `npm run check`.
 
 Every delivered alert must include:
 
@@ -564,14 +602,24 @@ The commercial product is complete only when all items below are checked.
 - [x] Add the provider dispatch worker for queued `AlertDeliveryAttempt` rows:
   send email first, mark sent/delivered/failed, schedule retries with
   exponential backoff, and ensure one subscriber failure does not block others.
+- [ ] Add a Super Admin integration settings UI so provider setup can be done
+  without editing code or environment files directly. It must support managed
+  setup/status for Resend email sender, Telegram bot token, Telegram webhook
+  URL/secret, Discord platform settings, Stripe test/live keys, webhook URLs,
+  secret rotation, masked secret display, audited changes, and test-connection
+  buttons.
 - [ ] Configure `RESEND_API_KEY` and `AUTH_EMAIL_FROM`, then run a live
   `npm run delivery:process -- --limit 5` test against one verified test
   subscriber.
+- [x] Add verified Telegram connection setup and webhook validation.
 - [ ] Add Stripe test-mode keys to `web/.env.local`, run
   `npm run stripe:sync-catalog`, configure the Stripe Customer Portal in test
   mode, and complete a real sandbox Checkout plus webhook replay test.
 - [ ] Configure the Resend API key and verified sender in `web/.env.local`, then
   run a live email magic-link sign-in.
+- [x] Implement secure Discord connection/webhook flow.
+- [ ] Add Discord/Telegram delivery dispatch from queued `AlertDeliveryAttempt`
+  rows after channel connections are verified.
 
 
 

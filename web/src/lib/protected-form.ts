@@ -11,7 +11,12 @@ export const PROTECTED_FORM_TOKEN_FIELD = "__protectedFormToken";
 export const PROTECTED_FORM_SCOPES = {
   magicLink: "sign-in:magic-link",
   accountPreferences: "account:preferences",
+  accountTelegramConnect: "account:telegram-connect",
+  accountTelegramDisconnect: "account:telegram-disconnect",
+  accountDiscordConnect: "account:discord-connect",
+  accountDiscordDisconnect: "account:discord-disconnect",
   adminAlertReview: "admin:alert-review",
+  adminIntegrationSettings: "admin:integration-settings",
 } as const;
 
 type ProtectedFormPayload = {

@@ -130,8 +130,62 @@ Authenticated account routes are protected by Auth.js:
   Discord, event families, symbols, confidence, risk level, and quiet hours.
 
 Free users only see sent alerts after the configured plan delay and within the
-plan's limited history window. Telegram and Discord connection flows are shown
-as unavailable or unverified until Phase 8 implements real connection setup.
+plan's limited history window. Telegram and Discord connection setup is
+available for plans that include those alert channels.
+
+## Telegram Alerts
+
+Telegram verification uses a short subscriber code and Telegram's webhook secret
+header. Configure these ignored local values before live use:
+
+```powershell
+TELEGRAM_BOT_TOKEN=123456:bot-token
+TELEGRAM_BOT_USERNAME=your_bot_username
+TELEGRAM_WEBHOOK_SECRET=local-telegram-webhook-secret-0123456789abcdef
+```
+
+The subscriber dashboard generates a six-digit Telegram code and stores only an
+HMAC hash of that code. The user sends the code to the configured bot within 15
+minutes. Telegram posts updates to:
+
+```text
+POST /api/integrations/telegram/webhook
+```
+
+The route rejects requests unless the
+`x-telegram-bot-api-secret-token` header matches `TELEGRAM_WEBHOOK_SECRET`.
+After a valid code is received, the app stores the Telegram chat ID and marks the
+connection verified. Disconnecting Telegram disables active connection rows.
+
+Set the webhook with Telegram after the app has a public HTTPS URL:
+
+```powershell
+$botToken = "123456:bot-token"
+$publicUrl = "https://your-domain.example.com/api/integrations/telegram/webhook"
+$secret = "local-telegram-webhook-secret-0123456789abcdef"
+Invoke-RestMethod -Method Post `
+  -Uri "https://api.telegram.org/bot$botToken/setWebhook" `
+  -Body @{ url = $publicUrl; secret_token = $secret }
+```
+
+## Discord Alerts
+
+Discord verification is handled from `/account/preferences` for Pro and Elite
+subscribers. The user pastes a Discord webhook URL, the server sends a
+verification message to that webhook, and the connection is marked verified only
+after Discord accepts the test. The webhook token is encrypted before it is
+stored; the dashboard only displays a masked webhook ID.
+
+Subscriber setup steps:
+
+1. In Discord, create or select a channel.
+2. Open channel settings, then Integrations, then Webhooks.
+3. Create a webhook and copy its webhook URL.
+4. Paste the URL into the Discord section of `/account/preferences`.
+5. Confirm the Market Catalyst verification message appears in Discord.
+
+Disconnecting Discord from the dashboard disables active webhook rows and clears
+the encrypted token.
 
 ## Form and URL Protection
 

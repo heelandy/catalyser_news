@@ -15,12 +15,14 @@ import {
 } from "@/lib/account-preferences";
 import { getRequiredDatabase } from "@/lib/db";
 import { isBillingConfigured } from "@/lib/billing/stripe-config";
+import { maskDiscordWebhookId } from "@/lib/discord-connection";
 import {
   resolveEntitlements,
   resolvePlanCode,
   subscriptionGrantsAccess,
 } from "@/lib/plan-access";
 import { PLAN_CATALOG, type PlanCode } from "@/lib/plan-catalog";
+import { getServerEnv } from "@/lib/env";
 
 type SubscriptionWithPlan = Awaited<
   ReturnType<typeof getAccountSubscriptions>
@@ -228,11 +230,19 @@ export async function loadAccountSnapshot(user: {
         available: entitlements.channels.includes(AlertChannel.TELEGRAM),
         enabled: preference?.telegramEnabled ?? false,
         verified: Boolean(telegram?.verifiedAt),
+        pending: Boolean(
+          telegram?.verificationCodeHash && !telegram.verifiedAt,
+        ),
+        botUsername: getServerEnv().TELEGRAM_BOT_USERNAME ?? null,
+        chatId: telegram?.chatId ?? null,
+        verifiedAt: telegram?.verifiedAt ?? null,
       },
       discord: {
         available: entitlements.channels.includes(AlertChannel.DISCORD),
         enabled: preference?.discordEnabled ?? false,
         verified: Boolean(discord?.verifiedAt),
+        webhookId: maskDiscordWebhookId(discord?.webhookId),
+        verifiedAt: discord?.verifiedAt ?? null,
       },
     },
     status: currentSubscription?.state ?? SubscriptionState.INCOMPLETE,

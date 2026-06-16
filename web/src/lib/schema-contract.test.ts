@@ -25,6 +25,8 @@ const requiredModels = [
   "AlertDeliveryAttempt",
   "DiscordConnection",
   "TelegramConnection",
+  "IntegrationSetting",
+  "IntegrationTestLog",
   "AdminAuditLog",
   "SecurityAuditLog",
 ];
@@ -36,6 +38,8 @@ const requiredEnums = [
   "AlertChannel",
   "MarketBias",
   "RiskLevel",
+  "IntegrationProvider",
+  "IntegrationStatus",
 ];
 
 describe("Phase 2 schema contract", () => {
@@ -57,6 +61,8 @@ describe("Phase 2 schema contract", () => {
     expect(schema).toContain("@@index([userId, state])");
     expect(schema).toContain("@@index([state, createdAt])");
     expect(schema).toContain("@@index([status, nextRetryAt])");
+    expect(schema).toContain("@@index([enabled, status])");
+    expect(schema).toContain("@@index([provider, createdAt])");
     expect(schema).toContain("@@index([retainUntil])");
   });
 });

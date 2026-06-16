@@ -25,6 +25,10 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import requests
 
+from macro_source_health import DEFAULT_HISTORY as SOURCE_HEALTH_HISTORY
+from macro_source_health import DEFAULT_SUMMARY as SOURCE_HEALTH_SUMMARY
+from macro_source_health import record_attempts
+
 try:
     from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 except Exception:  # pragma: no cover - dependency is optional at runtime
@@ -625,6 +629,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--context-output", default="macro_news_context.json")
     p.add_argument("--summary-output", default="macro_news_feed_summary.json")
     p.add_argument("--context-valid-minutes", type=int, default=45)
+    p.add_argument("--source-health-output", default=SOURCE_HEALTH_SUMMARY)
+    p.add_argument("--source-health-history", default=SOURCE_HEALTH_HISTORY)
+    p.add_argument("--skip-source-health", action="store_true")
     return p.parse_args()
 
 
@@ -635,17 +642,18 @@ def fetch_rows(args: argparse.Namespace) -> tuple[list[dict[str, Any]], list[str
     source_used = ""
     providers = ["yahoo", "yahoo_rss", "tradingview"] if args.provider == "auto" else [args.provider]
     for provider in providers:
+        started = time.perf_counter()
         try:
             if provider == "yahoo":
                 before = len(rows)
                 for symbol in split_symbols(args.symbols):
                     rows.extend(fetch_yahoo_symbol(symbol, args.max_per_symbol, args.timeout))
-                attempts.append({"provider": provider, "ok": True, "rows": len(rows) - before})
+                attempts.append({"provider": provider, "ok": True, "rows": len(rows) - before, "elapsed_seconds": time.perf_counter() - started})
             elif provider == "yahoo_rss":
                 before = len(rows)
                 for symbol in split_symbols(args.symbols):
                     rows.extend(fetch_yahoo_rss_symbol(symbol, args.max_per_symbol, args.timeout))
-                attempts.append({"provider": provider, "ok": True, "rows": len(rows) - before})
+                attempts.append({"provider": provider, "ok": True, "rows": len(rows) - before, "elapsed_seconds": time.perf_counter() - started})
             else:
                 before = len(rows)
                 rows.extend(fetch_tradingview(args.max_items, args.timeout, args.tradingview_news_url))
@@ -656,16 +664,16 @@ def fetch_rows(args: argparse.Namespace) -> tuple[list[dict[str, Any]], list[str
                         f"{normalized}; TradingView may be serving this feed through browser-side JavaScript"
                     )
                     errors.append(warning)
-                    attempts.append({"provider": provider, "ok": True, "rows": 0, "warning": warning})
+                    attempts.append({"provider": provider, "ok": True, "rows": 0, "warning": warning, "elapsed_seconds": time.perf_counter() - started})
                 else:
-                    attempts.append({"provider": provider, "ok": True, "rows": len(rows) - before})
+                    attempts.append({"provider": provider, "ok": True, "rows": len(rows) - before, "elapsed_seconds": time.perf_counter() - started})
             if rows:
                 source_used = provider
                 break
         except Exception as exc:
             error = f"{provider}: {exc}"
             errors.append(error)
-            attempts.append({"provider": provider, "ok": False, "rows": 0, "error": str(exc)})
+            attempts.append({"provider": provider, "ok": False, "rows": 0, "error": str(exc), "elapsed_seconds": time.perf_counter() - started})
     return rows, errors, attempts, source_used
 
 
@@ -699,6 +707,18 @@ def main() -> None:
     write_csv(output, rows)
     context_output.write_text(json.dumps(context_payload(rows, now, args.context_valid_minutes), indent=2, sort_keys=True) + "\n", encoding="utf-8")
     summary_output.write_text(json.dumps(summary_payload(rows, errors, attempts, source_used, now), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    if not args.skip_source_health:
+        try:
+            record_attempts(
+                "news_feed",
+                attempts,
+                source_used=source_used,
+                summary_path=args.source_health_output,
+                history_path=args.source_health_history,
+                checked_at=now,
+            )
+        except Exception as exc:
+            print(f"Source health write failed: {exc}")
     print(f"Wrote {len(rows)} interpreted news rows to {output}.")
     if errors:
         print("News fetch warnings: " + "; ".join(errors))

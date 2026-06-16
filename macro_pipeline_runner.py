@@ -161,6 +161,33 @@ def news_feed_command(args: argparse.Namespace, cache_minutes: int | None = None
         args.news_regime_context,
         "--summary-output",
         args.news_feed_summary_output,
+        "--source-health-output",
+        args.source_health_output,
+        "--source-health-history",
+        args.source_health_history,
+    ]
+
+
+def earnings_calendar_command(args: argparse.Namespace) -> list[str]:
+    return python_cmd(args, "macro_earnings_calendar.py") + [
+        "--symbols",
+        args.earnings_calendar_symbols,
+        "--lookback-days",
+        str(args.earnings_lookback_days),
+        "--lookahead-days",
+        str(args.earnings_lookahead_days),
+        "--timeout",
+        str(args.earnings_timeout),
+        "--output",
+        args.earnings_calendar_output,
+        "--raw-output",
+        args.earnings_calendar_raw_output,
+        "--summary-output",
+        args.earnings_calendar_summary_output,
+        "--source-health-output",
+        args.source_health_output,
+        "--source-health-history",
+        args.source_health_history,
     ]
 
 
@@ -204,6 +231,17 @@ def market_data_due(args: argparse.Namespace) -> bool:
     return age_seconds >= minutes * 60
 
 
+def file_due(path_text: str, minutes: float) -> bool:
+    minutes = max(float(minutes), 0.0)
+    if minutes <= 0:
+        return True
+    path = Path(path_text)
+    if not path.exists():
+        return True
+    age_seconds = time.time() - path.stat().st_mtime
+    return age_seconds >= minutes * 60
+
+
 def build_stages(args: argparse.Namespace) -> list[Stage]:
     stages: list[Stage] = []
 
@@ -231,6 +269,17 @@ def build_stages(args: argparse.Namespace) -> list[Stage]:
             )
         )
 
+    if not args.skip_earnings_calendar and file_due(args.earnings_calendar_output, args.earnings_refresh_minutes):
+        stages.append(
+            Stage(
+                name="earnings_calendar_fetch",
+                command=earnings_calendar_command(args),
+                required_inputs=[],
+                expected_outputs=[args.earnings_calendar_output, args.earnings_calendar_summary_output],
+                optional=True,
+            )
+        )
+
     if not args.skip_live_fetch:
         live_command = python_cmd(args, "catalyser_news.py") + [
             "--calendar",
@@ -247,7 +296,13 @@ def build_stages(args: argparse.Namespace) -> list[Stage]:
             args.macro_output,
             "--output",
             args.news_output,
+            "--source-health-output",
+            args.source_health_output,
+            "--source-health-history",
+            args.source_health_history,
         ]
+        if not args.skip_earnings_calendar:
+            live_command += ["--macro-extra-file", args.earnings_calendar_output]
         if args.watch_releases:
             live_command += [
                 "--watch-releases",
@@ -487,6 +542,8 @@ def build_stages(args: argparse.Namespace) -> list[Stage]:
                     args.regime_context,
                     "--generated-regime-context",
                     args.generated_regime_context,
+                    "--market-data",
+                    args.active_market_data_file,
                 ],
                 required_inputs=[args.adjusted_signal_output, args.daily_confirmation_profiles],
                 expected_outputs=[args.current_signal_output, args.daily_confirmation_report_output],
@@ -676,6 +733,9 @@ def run_cycle(args: argparse.Namespace, root: Path, cycle: int) -> bool:
         "news_feed_output": args.news_feed_output,
         "news_feed_summary_output": args.news_feed_summary_output,
         "news_feed_provider": args.news_feed_provider,
+        "earnings_calendar_enabled": not args.skip_earnings_calendar,
+        "earnings_calendar_output": args.earnings_calendar_output,
+        "source_health_output": args.source_health_output,
     }
 
     news_lock = threading.Lock()
@@ -746,6 +806,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--log-max-mb", type=float, default=10.0, help="Rotate the log to <name>.1 when it grows past this size (0 disables)")
     p.add_argument("--lock-file", default="macro_pipeline_runner.lock", help="PID lock so two live runners cannot overwrite the same outputs (empty disables)")
     p.add_argument("--status-output", default="macro_pipeline_status.json")
+    p.add_argument("--source-health-output", default="macro_source_health.json")
+    p.add_argument("--source-health-history", default="macro_source_health_history.jsonl")
     p.add_argument("--skip-alerts", action="store_true", help="Do not run the separate alert detector after each cycle")
     p.add_argument("--alerts-output", default="macro_pipeline_alerts.csv")
     p.add_argument("--alert-state-output", default="macro_pipeline_alert_state.json")
@@ -787,6 +849,16 @@ def parse_args() -> argparse.Namespace:
         default="data/NQ_5min_data.csv",
         help="File whose age decides whether the market-data refresh stage runs",
     )
+
+    p.add_argument("--skip-earnings-calendar", action="store_true", help="Do not fetch/merge NQ-relevant earnings catalysts")
+    p.add_argument("--earnings-calendar-symbols", default="NVDA,MSFT,AAPL,AMZN,META,GOOGL,AVGO,AMD,TSLA,NFLX")
+    p.add_argument("--earnings-lookback-days", type=int, default=2)
+    p.add_argument("--earnings-lookahead-days", type=int, default=21)
+    p.add_argument("--earnings-refresh-minutes", type=float, default=120.0)
+    p.add_argument("--earnings-timeout", type=int, default=10)
+    p.add_argument("--earnings-calendar-output", default="macro_earnings_calendar.csv")
+    p.add_argument("--earnings-calendar-raw-output", default="macro_earnings_calendar_raw.csv")
+    p.add_argument("--earnings-calendar-summary-output", default="macro_earnings_calendar_summary.json")
 
     p.add_argument("--skip-live-fetch", action="store_true")
     p.add_argument("--tv-countries", default="us")

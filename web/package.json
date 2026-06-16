@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "node tools/next_build.mjs",
     "start": "next start",
     "lint": "eslint . --max-warnings=0",
     "format": "prettier . --write",

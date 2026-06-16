@@ -1,0 +1,31 @@
+{
+  "checked_at": "2026-06-16T13:46:54.507Z",
+  "errors": [
+    "NVDA: 500 Server Error: Cannot find server. for url: https://query1.finance.yahoo.com/v7/finance/calendar/earnings?symbol=NVDA",
+    "MSFT: 500 Server Error: Cannot find server. for url: https://query1.finance.yahoo.com/v7/finance/calendar/earnings?symbol=MSFT",
+    "AAPL: 500 Server Error: Cannot find server. for url: https://query1.finance.yahoo.com/v7/finance/calendar/earnings?symbol=AAPL",
+    "AMZN: 500 Server Error: Cannot find server. for url: https://query1.finance.yahoo.com/v7/finance/calendar/earnings?symbol=AMZN",
+    "META: 500 Server Error: Cannot find server. for url: https://query1.finance.yahoo.com/v7/finance/calendar/earnings?symbol=META",
+    "GOOGL: 500 Server Error: Cannot find server. for url: https://query1.finance.yahoo.com/v7/finance/calendar/earnings?symbol=GOOGL",
+    "AVGO: 500 Server Error: Cannot find server. for url: https://query1.finance.yahoo.com/v7/finance/calendar/earnings?symbol=AVGO",
+    "AMD: 500 Server Error: Cannot find server. for url: https://query1.finance.yahoo.com/v7/finance/calendar/earnings?symbol=AMD",
+    "TSLA: 500 Server Error: Cannot find server. for url: https://query1.finance.yahoo.com/v7/finance/calendar/earnings?symbol=TSLA",
+    "NFLX: 500 Server Error: Cannot find server. for url: https://query1.finance.yahoo.com/v7/finance/calendar/earnings?symbol=NFLX"
+  ],
+  "latest_titles": [],
+  "provider": "yahoo_earnings",
+  "raw_rows": 0,
+  "rows": 0,
+  "symbols": [
+    "NVDA",
+    "MSFT",
+    "AAPL",
+    "AMZN",
+    "META",
+    "GOOGL",
+    "AVGO",
+    "AMD",
+    "TSLA",
+    "NFLX"
+  ]
+}

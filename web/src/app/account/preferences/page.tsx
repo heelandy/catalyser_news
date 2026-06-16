@@ -8,7 +8,13 @@ import {
   ShieldCheck,
 } from "lucide-react";
 
-import { saveAlertPreferences } from "@/app/account/preferences/actions";
+import {
+  connectDiscordWebhook,
+  disconnectDiscordWebhook,
+  disconnectTelegramConnection,
+  saveAlertPreferences,
+  startTelegramConnection,
+} from "@/app/account/preferences/actions";
 import {
   EVENT_FAMILY_OPTIONS,
   SYMBOL_OPTIONS,
@@ -21,11 +27,58 @@ import {
 } from "@/lib/protected-form";
 import { requireUser } from "@/lib/server-auth";
 
-export default async function PreferencesPage() {
+export default async function PreferencesPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const user = await requireUser("/account/preferences");
   const snapshot = await loadAccountSnapshot(user);
+  const params = searchParams ? await searchParams : {};
+  const telegramCode =
+    typeof params.telegramCode === "string" &&
+    /^\d{6}$/.test(params.telegramCode)
+      ? params.telegramCode
+      : null;
+  const discordStatus =
+    typeof params.discordStatus === "string" ? params.discordStatus : null;
+  const discordStatusMessage =
+    discordStatus === "connected"
+      ? "Discord webhook connected and verified."
+      : discordStatus === "disconnected"
+        ? "Discord webhook disconnected."
+        : discordStatus === "invalid_url"
+          ? "Enter a valid Discord webhook URL."
+          : discordStatus === "test_failed"
+            ? "Discord rejected the webhook test message."
+            : discordStatus === "already_connected"
+              ? "That Discord webhook is already connected to another account."
+              : discordStatus === "missing_url"
+                ? "Paste a Discord webhook URL before connecting."
+                : discordStatus === "plan_required"
+                  ? "Discord alerts require a Pro or Elite plan."
+                  : null;
+  const telegramBotLabel = snapshot.channels.telegram.botUsername
+    ? `@${snapshot.channels.telegram.botUsername.replace(/^@/, "")}`
+    : "your configured Telegram bot";
   const formToken = createProtectedFormToken({
     scope: PROTECTED_FORM_SCOPES.accountPreferences,
+    userId: user.id,
+  });
+  const telegramConnectToken = createProtectedFormToken({
+    scope: PROTECTED_FORM_SCOPES.accountTelegramConnect,
+    userId: user.id,
+  });
+  const telegramDisconnectToken = createProtectedFormToken({
+    scope: PROTECTED_FORM_SCOPES.accountTelegramDisconnect,
+    userId: user.id,
+  });
+  const discordConnectToken = createProtectedFormToken({
+    scope: PROTECTED_FORM_SCOPES.accountDiscordConnect,
+    userId: user.id,
+  });
+  const discordDisconnectToken = createProtectedFormToken({
+    scope: PROTECTED_FORM_SCOPES.accountDiscordDisconnect,
     userId: user.id,
   });
 
@@ -229,8 +282,12 @@ export default async function PreferencesPage() {
                 <strong>Telegram</strong>
                 <small>
                   {snapshot.channels.telegram.verified
-                    ? "Verified"
-                    : "Connection flow starts in Phase 8"}
+                    ? `Verified ${formatDate(snapshot.channels.telegram.verifiedAt)}`
+                    : snapshot.channels.telegram.pending
+                      ? "Verification pending"
+                      : snapshot.channels.telegram.available
+                        ? "Generate a verification code"
+                        : "Pro or Elite required"}
                 </small>
               </div>
               {snapshot.channels.telegram.verified ? (
@@ -239,14 +296,63 @@ export default async function PreferencesPage() {
                 <CircleSlash size={17} />
               )}
             </div>
+            {snapshot.channels.telegram.available ? (
+              <div className="channel-action-block">
+                {telegramCode ? (
+                  <div className="verification-code">
+                    <span>Telegram code</span>
+                    <strong>{telegramCode}</strong>
+                    <small>
+                      Send this code to {telegramBotLabel} within 15 minutes.
+                    </small>
+                  </div>
+                ) : null}
+                {snapshot.channels.telegram.pending && !telegramCode ? (
+                  <p className="panel-note">
+                    A Telegram code is pending. Generate a new code if the last
+                    one expired.
+                  </p>
+                ) : null}
+                <div className="row-actions">
+                  <form action={startTelegramConnection}>
+                    <input
+                      type="hidden"
+                      name={PROTECTED_FORM_TOKEN_FIELD}
+                      value={telegramConnectToken}
+                    />
+                    <button className="small-action-button" type="submit">
+                      Generate code
+                    </button>
+                  </form>
+                  {snapshot.channels.telegram.verified ||
+                  snapshot.channels.telegram.pending ? (
+                    <form action={disconnectTelegramConnection}>
+                      <input
+                        type="hidden"
+                        name={PROTECTED_FORM_TOKEN_FIELD}
+                        value={telegramDisconnectToken}
+                      />
+                      <button
+                        className="small-action-button danger"
+                        type="submit"
+                      >
+                        Disconnect
+                      </button>
+                    </form>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
             <div className="channel-row">
               <MessageCircle size={17} />
               <div>
                 <strong>Discord</strong>
                 <small>
                   {snapshot.channels.discord.verified
-                    ? "Verified"
-                    : "Connection flow starts in Phase 8"}
+                    ? `Verified ${formatDate(snapshot.channels.discord.verifiedAt)}`
+                    : snapshot.channels.discord.available
+                      ? "Paste a Discord webhook URL"
+                      : "Pro or Elite required"}
                 </small>
               </div>
               {snapshot.channels.discord.verified ? (
@@ -255,6 +361,59 @@ export default async function PreferencesPage() {
                 <CircleSlash size={17} />
               )}
             </div>
+            {snapshot.channels.discord.available ? (
+              <div className="channel-action-block">
+                {discordStatusMessage ? (
+                  <p
+                    className={
+                      discordStatus === "connected" ||
+                      discordStatus === "disconnected"
+                        ? "panel-note success"
+                        : "panel-note danger"
+                    }
+                  >
+                    {discordStatusMessage}
+                  </p>
+                ) : null}
+                {snapshot.channels.discord.verified ? (
+                  <p className="panel-note">
+                    Active webhook {snapshot.channels.discord.webhookId}
+                  </p>
+                ) : null}
+                <form action={connectDiscordWebhook} className="inline-form">
+                  <input
+                    type="hidden"
+                    name={PROTECTED_FORM_TOKEN_FIELD}
+                    value={discordConnectToken}
+                  />
+                  <input
+                    aria-label="Discord webhook URL"
+                    name="discordWebhookUrl"
+                    placeholder="https://discord.com/api/webhooks/..."
+                    type="url"
+                    autoComplete="off"
+                  />
+                  <button className="small-action-button" type="submit">
+                    Connect
+                  </button>
+                </form>
+                {snapshot.channels.discord.verified ? (
+                  <form action={disconnectDiscordWebhook}>
+                    <input
+                      type="hidden"
+                      name={PROTECTED_FORM_TOKEN_FIELD}
+                      value={discordDisconnectToken}
+                    />
+                    <button
+                      className="small-action-button danger"
+                      type="submit"
+                    >
+                      Disconnect
+                    </button>
+                  </form>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         </article>
 

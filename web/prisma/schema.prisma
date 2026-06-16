@@ -85,6 +85,23 @@ enum RiskLevel {
   CRITICAL
 }
 
+enum IntegrationProvider {
+  RESEND_EMAIL
+  TELEGRAM
+  DISCORD
+  STRIPE
+  ENGINE_INGEST
+}
+
+enum IntegrationStatus {
+  NOT_CONFIGURED
+  CONFIGURED
+  VERIFIED
+  NEEDS_ATTENTION
+  ERROR
+  DISABLED
+}
+
 enum DeliveryStatus {
   QUEUED
   SENT
@@ -522,6 +539,45 @@ model TelegramConnection {
 
   @@unique([userId, chatId])
   @@index([userId, disabledAt])
+}
+
+model IntegrationSetting {
+  id               String              @id @default(cuid())
+  provider         IntegrationProvider @unique
+  enabled          Boolean             @default(false)
+  displayName      String              @db.VarChar(120)
+  publicConfig     Json?
+  encryptedSecrets Json?
+  maskedSecrets    Json?
+  status           IntegrationStatus   @default(NOT_CONFIGURED)
+  lastTestStatus   IntegrationStatus?
+  lastTestMessage  String?             @db.Text
+  lastTestedAt     DateTime?
+  lastRotatedAt    DateTime?
+  updatedById      String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  tests IntegrationTestLog[]
+
+  @@index([enabled, status])
+  @@index([updatedAt])
+}
+
+model IntegrationTestLog {
+  id          String              @id @default(cuid())
+  settingId   String?
+  provider    IntegrationProvider
+  status      IntegrationStatus
+  message     String              @db.Text
+  actorUserId String?
+  metadata    Json?
+  createdAt   DateTime            @default(now())
+
+  setting IntegrationSetting? @relation(fields: [settingId], references: [id], onDelete: SetNull)
+
+  @@index([provider, createdAt])
+  @@index([status, createdAt])
 }
 
 model AdminAuditLog {

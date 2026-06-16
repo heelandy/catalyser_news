@@ -100,6 +100,9 @@ def bias_from_text(value: Any) -> str:
 
 
 def risk_level(row: dict[str, Any]) -> str:
+    standardized = first_clean(row, "standardized_risk_level", "risk_level").upper()
+    if standardized in RISK_LEVELS:
+        return standardized
     warning = first_clean(row, "final_warning", "trust_warning", "warning").lower()
     trade_state = first_clean(row, "trade_state").lower()
     conflict = first_clean(row, "market_regime_conflict", fallback="none").lower()
@@ -112,6 +115,16 @@ def risk_level(row: dict[str, Any]) -> str:
     if confidence >= 75:
         return "MEDIUM"
     return "LOW"
+
+
+def parse_json_field(value: Any, fallback: Any) -> Any:
+    text = clean(value)
+    if not text:
+        return fallback
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return fallback
 
 
 def stable_digest(parts: list[str]) -> str:
@@ -179,6 +192,7 @@ def build_payload(row: dict[str, Any], generated_at: str | None = None) -> dict[
     trade_state = first_clean(row, "trade_state", fallback="watch_only")
     warning = first_clean(
         row,
+        "risk_warning",
         "final_warning",
         "trust_warning",
         "warning",
@@ -186,27 +200,55 @@ def build_payload(row: dict[str, Any], generated_at: str | None = None) -> dict[
     )
     expected_reaction = first_clean(
         row,
+        "expected_market_effect",
         "trade_state_reason",
         "market_rule_note",
         fallback=f"{title} points to a {final_bias.lower()} NQ reaction, pending tape confirmation.",
     )
-    reasoning = "; ".join(
-        part
-        for part in [
-            first_clean(row, "market_rule_note"),
-            first_clean(row, "live_market_regime_reason"),
-            first_clean(row, "daily_confirmation_note"),
-        ]
-        if part
-    ) or expected_reaction
-    expires_at = None
+    subscriber_reasoning = first_clean(row, "subscriber_reasoning")
+    reasoning = subscriber_reasoning or (
+        "; ".join(
+            part
+            for part in [
+                first_clean(row, "market_rule_note"),
+                first_clean(row, "live_market_regime_reason"),
+                first_clean(row, "daily_confirmation_note"),
+            ]
+            if part
+        )
+        or expected_reaction
+    )
+    expires_at = parse_engine_time(first_clean(row, "expires_at", "expiresAt"))
     if release_time:
-        try:
-            base = datetime.fromisoformat(release_time.replace("Z", "+00:00"))
-            expires_at = base.replace(tzinfo=timezone.utc).timestamp() + 2 * 60 * 60
-            expires_at = datetime.fromtimestamp(expires_at, timezone.utc).isoformat().replace("+00:00", "Z")
-        except ValueError:
-            expires_at = None
+        if not expires_at:
+            try:
+                base = datetime.fromisoformat(release_time.replace("Z", "+00:00"))
+                expires_at = base.replace(tzinfo=timezone.utc).timestamp() + 2 * 60 * 60
+                expires_at = datetime.fromtimestamp(expires_at, timezone.utc).isoformat().replace("+00:00", "Z")
+            except ValueError:
+                expires_at = None
+    watch_levels = parse_json_field(
+        first_clean(row, "watch_levels_json", "watchLevels"),
+        {
+            "source": "python_engine",
+            "release_time": release_time,
+            "trade_state": trade_state,
+        },
+    )
+    invalidation = first_clean(
+        row,
+        "invalidation_scenario",
+        "invalidation",
+        fallback="Signal invalidates if live tape/regime no longer confirms the stated bias.",
+    )
+    alert_summary = first_clean(
+        row,
+        "subscriber_summary",
+        "message",
+        "market_rule_note",
+        fallback=expected_reaction,
+    )
+    disclaimer = first_clean(row, "educational_disclaimer", "disclaimer", fallback=DISCLAIMER)
 
     key = idempotency_key(row)
     fingerprint = f"python-engine:{stable_digest([key])[:64]}"
@@ -223,7 +265,7 @@ def build_payload(row: dict[str, Any], generated_at: str | None = None) -> dict[
             "eventFamily": event_family,
             "headline": title,
             "url": first_clean(row, "source_url") or None,
-            "summary": first_clean(row, "message", "market_rule_note", fallback=warning),
+            "summary": alert_summary,
             "occurredAt": release_time,
             "fetchedAt": generated_at,
             "rawPayload": {
@@ -248,31 +290,23 @@ def build_payload(row: dict[str, Any], generated_at: str | None = None) -> dict[
             "expectedReaction": expected_reaction,
             "reasoning": reasoning,
             "riskWarning": warning,
-            "watchLevels": {
-                "source": "python_engine",
-                "release_time": release_time,
-                "trade_state": trade_state,
-            },
-            "invalidation": "Signal invalidates if live tape/regime no longer confirms the stated bias.",
+            "watchLevels": watch_levels,
+            "invalidation": invalidation,
             "expiresAt": expires_at,
         },
         "alert": {
             "state": "PENDING",
             "headline": title,
-            "summary": first_clean(row, "message", "market_rule_note", fallback=expected_reaction),
+            "summary": alert_summary,
             "bias": final_bias,
             "expectedReaction": expected_reaction,
             "confidence": confidence,
             "riskLevel": risk_level(row),
             "reasoning": reasoning,
             "riskWarning": warning,
-            "watchLevels": {
-                "source": "python_engine",
-                "release_time": release_time,
-                "trade_state": trade_state,
-            },
-            "invalidation": "Signal invalidates if live tape/regime no longer confirms the stated bias.",
-            "disclaimer": DISCLAIMER,
+            "watchLevels": watch_levels,
+            "invalidation": invalidation,
+            "disclaimer": disclaimer,
             "sourceFingerprint": fingerprint,
             "expiresAt": expires_at,
         },

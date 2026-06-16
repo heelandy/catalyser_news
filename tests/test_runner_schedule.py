@@ -39,16 +39,27 @@ class StageOrderTests(unittest.TestCase):
 
     def test_news_feed_runs_first(self):
         args = self.make_args()
+        args.earnings_refresh_minutes = 0
         stages = [stage.name for stage in runner.build_stages(args)]
         self.assertIn("news_feed", stages)
         self.assertEqual(stages.index("news_feed"), 0)
+        self.assertIn("earnings_calendar_fetch", stages)
+        self.assertLess(stages.index("earnings_calendar_fetch"), stages.index("live_calendar_fetch"))
         self.assertLess(stages.index("news_feed"), stages.index("live_calendar_fetch"))
         self.assertLess(stages.index("live_calendar_fetch"), stages.index("live_regime_context"))
+
+    def test_live_fetch_merges_earnings_extra_file(self):
+        args = self.make_args()
+        stages = runner.build_stages(args)
+        live = next(stage for stage in stages if stage.name == "live_calendar_fetch")
+        self.assertIn("--macro-extra-file", live.command)
+        self.assertIn(args.earnings_calendar_output, live.command)
 
     def test_news_refresh_defaults(self):
         args = self.make_args()
         self.assertEqual(args.news_feed_cache_minutes, 3)
         self.assertEqual(args.news_feed_refresh_seconds, 180)
+        self.assertEqual(args.earnings_refresh_minutes, 120.0)
 
 
 if __name__ == "__main__":

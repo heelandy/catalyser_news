@@ -13,12 +13,19 @@ each responsibility separate:
 - `futures_data_adapter.py` normalizes deeper external futures CSV exports.
 - `dabento_nq_adapter.py` normalizes Dabento NQ OHLCV exports.
 - `catalyser_news.py` watches scheduled catalysts and live economic-calendar rows.
+- `macro_earnings_calendar.py` fetches NQ-relevant earnings dates and EPS
+  surprise values for the catalyst engine.
+- `macro_source_health.py` records provider success/failure and failover
+  history for news, calendar, and earnings sources.
 - `macro_reaction_study.py` learns how NQ historically reacted to macro surprises.
 - `macro_signal_performance.py` grades signal predictions after releases occur.
 - `macro_signal_trust.py` feeds those grades back into live signal probabilities.
 - `macro_data_quality.py` checks market-data health and release coverage.
 - `macro_probability_validation.py` checks probability calibration.
 - `macro_timing_audit.py` checks release-time alignment to market bars.
+- `macro_subscriber_fields.py` standardizes subscriber-ready summaries,
+  expected market effect, risk, watch levels, invalidation, expiry, and
+  disclaimer fields.
 - `macro_pipeline_runner.py` runs the separated modules in a repeatable loop.
 - `macro_pipeline_alerts.py` detects release-state and runner-health changes.
 - `macro_alert_notify.py` sends optional notifications for newly detected alerts.
@@ -283,6 +290,16 @@ Live-regime override:
   `macro_news_context.json`; the dashboard shows source, age, bias, warnings,
   themes, risk flags, and latest interpreted headlines in the `Interpreted News`
   panel.
+- The runner also refreshes NQ-relevant earnings catalysts every
+  `--earnings-refresh-minutes` (default 120). `macro_earnings_calendar.py`
+  writes `macro_earnings_calendar.csv`, and `catalyser_news.py` merges that file
+  into `macro_releases.csv` through `--macro-extra-file` so EPS beats/misses are
+  scored by the same calibration path as macro releases. Use
+  `--skip-earnings-calendar` to disable this feed.
+- Provider health is durable now. News, economic-calendar, macro-extra, and
+  earnings attempts append to `macro_source_health_history.jsonl` and roll up
+  into `macro_source_health.json`, including rows returned, latest errors, and
+  consecutive failure counts.
 - Create a local `macro_regime_context.json` when fresh news or price action is
   overriding the generated rules. This file is ignored by Git so it can be
   changed during the session without polluting commits. Use
@@ -322,6 +339,12 @@ Manual news refresh:
 ```powershell
 python .\macro_news_feed.py --provider auto --force
 python .\macro_live_regime_builder.py
+```
+
+Manual earnings refresh:
+
+```powershell
+python .\macro_earnings_calendar.py --symbols NVDA,MSFT,AAPL,AMZN,META,GOOGL,AVGO,AMD,TSLA,NFLX --lookahead-days 21
 ```
 
 Force the TradingView news-flow source:
@@ -983,6 +1006,8 @@ Those files are kept for reference, not deleted.
 | `futures_data_adapter.py` | External futures CSV normalizer for deeper intraday data. |
 | `dabento_nq_adapter.py` | Dabento NQ OHLCV normalizer, dominant-contract selector, resampler, and roll-map writer. |
 | `catalyser_news.py` | Catalyst calendar, news, live macro release watcher, probability scoring. |
+| `macro_earnings_calendar.py` | Yahoo earnings calendar normalizer for NQ-relevant company events and EPS surprises. |
+| `macro_source_health.py` | Durable source-health JSON/JSONL recorder for news, calendar, earnings, and failover attempts. |
 | `macro_reaction_study.py` | Historical event-to-price reaction study and live-release calibration. |
 | `macro_daily_source_compare.py` | Daily source-to-source reaction comparison report. |
 | `macro_daily_confirmation.py` | Temporary daily baseline confirmation layer for current live signals. |
@@ -1010,6 +1035,9 @@ Those files are kept for reference, not deleted.
 | `macro_live_signal_current.csv` | Current dashboard signal contract with daily confirmation applied. |
 | `macro_news_feed.csv` | Runtime interpreted headline feed loaded by the dashboard. |
 | `macro_news_feed_summary.json` | Latest news-fetch counts, titles, and fetch warnings. |
+| `macro_earnings_calendar.csv` | Runtime earnings catalyst rows merged into `macro_releases.csv`. |
+| `macro_source_health.json` | Latest provider source-health rollup. |
+| `macro_source_health_history.jsonl` | Durable provider attempt and failover history. |
 | `studies/macro_reaction_profiles_5m.csv` | Smoothed historical reaction probabilities. |
 | `studies/macro_reaction_profiles_60m.csv` | Deeper 2024-2026 hourly reaction probabilities. |
 | `studies/macro_reaction_profiles_dabento_full_1m.csv` | Active full-range 1m Dabento calibration profile. |

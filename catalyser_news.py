@@ -25,6 +25,10 @@ import time
 import requests
 import json
 
+from macro_source_health import DEFAULT_HISTORY as SOURCE_HEALTH_HISTORY
+from macro_source_health import DEFAULT_SUMMARY as SOURCE_HEALTH_SUMMARY
+from macro_source_health import record_attempts
+
 POS_WORDS = {"beat","beats","beatings","gain","gains","up","surge","surged","rally","higher","strong","outperform","outperformed","beat","positive","upgrade","buys","optimistic","booming","record"}
 NEG_WORDS = {"miss","missed","misses","down","fall","drop","plunge","weak","weakness","sell","downgrade","loss","losses","negative","cut","decline","slump","fears","uncertain"}
 
@@ -275,6 +279,8 @@ def format_release_value(value, scale='', unit=''):
 def release_direction_rule(title: str, category: str = ""):
     text = f"{title} {category}".lower()
 
+    if any(k in text for k in ("earnings", "eps", "revenue", "guidance", "margin")):
+        return 0.7, "Higher earnings or stronger guidance is usually bullish for NQ/QQQ, while misses or demand warnings pressure growth risk appetite."
     if any(k in text for k in ("cpi", "ppi", "pce", "inflation", "prices", "price index")):
         return -1.0, "Higher inflation is usually bearish for U.S. stocks because it can lift yields and reduce rate-cut odds."
     if any(k in text for k in ("fomc", "interest rate", "fed funds", "rate decision", "dot plot")):
@@ -597,6 +603,7 @@ def build_catalyst_rows(events, as_of=None, lookback_days=2, lookahead_days=14, 
         volatility_score = score['volatility_score'] if has_release_values else profile['volatility_score']
         expected_effect = score['expected_effect'] if has_release_values else profile['expected_effect']
         body = f"{event.get('note', '')} {expected_effect}".strip()
+        row_symbols = split_symbols(event.get('symbols')) if event.get('symbols') else symbols
         out.append({
             'date': end_dt,
             'start_date': start_dt.date().isoformat(),
@@ -605,7 +612,7 @@ def build_catalyst_rows(events, as_of=None, lookback_days=2, lookahead_days=14, 
             'title': event.get('title', ''),
             'body': body,
             'provider': event.get('provider', 'calendar'),
-            'symbols': symbols,
+            'symbols': row_symbols,
             'catalyst_category': profile['category'],
             'importance': profile['importance'],
             'direction_score': direction_score,
@@ -1126,7 +1133,7 @@ def write_summary_csv(path, rows):
 
 def write_catalyst_csv(path, rows):
     keys = [
-        'start_date','end_date','release_time','title','catalyst_category','importance','importance_raw',
+        'start_date','end_date','release_time','title','provider','catalyst_category','importance','importance_raw',
         'country','category','reference','calendar_id','unit','scale',
         'release_status','previous','forecast','actual','previous_value','forecast_value','actual_value',
         'surprise','surprise_basis','raw_surprise_side','market_bias_side','market_bias_label',
@@ -1147,6 +1154,20 @@ def write_catalyst_csv(path, rows):
 def prefixed_output_path(prefix, output_path):
     folder, name = os.path.split(output_path)
     return os.path.join(folder, f"{prefix}{name}")
+
+
+def catalyst_row_key(row):
+    return (
+        row.get('calendar_id')
+        or f"{row.get('release_time')}|{str(row.get('title') or '').lower()}|{row.get('source') or row.get('provider')}"
+    )
+
+
+def dedupe_catalyst_rows(rows):
+    by_key = {}
+    for row in rows:
+        by_key[catalyst_row_key(row)] = row
+    return sorted(by_key.values(), key=lambda r: (r.get('release_time') or r.get('start_date') or '', r.get('title') or ''))
 
 
 def run_forever_from_argv(loop_seconds):
@@ -1189,6 +1210,7 @@ def main():
     p.add_argument('--symbols', help='Comma-separated symbol hints (e.g. AAPL,MSFT)')
     p.add_argument('--calendar', action='store_true', help='Include the built-in 2026 market catalyst calendar')
     p.add_argument('--catalyst-file', help='Optional CSV catalyst calendar with date,title/note columns')
+    p.add_argument('--macro-extra-file', action='append', default=[], help='Extra catalyst CSV to merge into --macro-output, such as macro_earnings_calendar.csv')
     p.add_argument('--as-of', help='Anchor date for catalyst window, YYYY-MM-DD. Defaults to today.')
     p.add_argument('--lookback-days', type=int, default=2, help='Catalyst calendar lookback window')
     p.add_argument('--lookahead-days', type=int, default=14, help='Catalyst calendar lookahead window')
@@ -1203,6 +1225,9 @@ def main():
     p.add_argument('--te-country', default='united states', help='Trading Economics country filter')
     p.add_argument('--te-min-importance', type=int, default=2, help='Minimum Trading Economics importance: 1 low, 2 medium, 3 high')
     p.add_argument('--macro-output', default='macro_releases.csv', help='CSV path for live macro release rows')
+    p.add_argument('--source-health-output', default=SOURCE_HEALTH_SUMMARY, help='JSON source-health summary path')
+    p.add_argument('--source-health-history', default=SOURCE_HEALTH_HISTORY, help='JSONL source-health history path')
+    p.add_argument('--skip-source-health', action='store_true', help='Do not record provider source-health attempts')
     p.add_argument('--watch-releases', action='store_true', help='Poll the live calendar until at least one actual value appears or watch timeout is reached')
     p.add_argument('--poll-seconds', type=int, default=60, help='Seconds between live calendar polls')
     p.add_argument('--watch-minutes', type=int, default=30, help='Maximum minutes to poll for actual values')
@@ -1219,6 +1244,9 @@ def main():
         return
 
     rows = []
+    macro_rows_for_output = []
+    calendar_attempts = []
+    extra_attempts = []
     if args.news_file:
         rows.extend(parse_news_csv(args.news_file))
 
@@ -1247,9 +1275,17 @@ def main():
                 providers_used.add('tradingview')
 
     if args.tv_calendar:
+        started = time.perf_counter()
         try:
             tv_macro_rows = fetch_tradingview_with_watch(args)
             rows.extend(tv_macro_rows)
+            macro_rows_for_output.extend(tv_macro_rows)
+            calendar_attempts.append({
+                'provider': 'tradingview_calendar',
+                'ok': True,
+                'rows': len(tv_macro_rows),
+                'elapsed_seconds': time.perf_counter() - started,
+            })
             if tv_macro_rows:
                 tv_macro_out = prefixed_output_path('tradingview_', args.macro_output) if args.te_calendar else args.macro_output
                 write_catalyst_csv(tv_macro_out, tv_macro_rows)
@@ -1264,12 +1300,27 @@ def main():
             else:
                 print('Fetched 0 macro release rows from TradingView in the requested window.')
         except Exception as exc:
+            calendar_attempts.append({
+                'provider': 'tradingview_calendar',
+                'ok': False,
+                'rows': 0,
+                'error': str(exc),
+                'elapsed_seconds': time.perf_counter() - started,
+            })
             print(f'TradingView calendar fetch failed: {exc}')
 
     if args.te_calendar:
+        started = time.perf_counter()
         try:
             macro_rows = fetch_tradingeconomics_with_watch(args)
             rows.extend(macro_rows)
+            macro_rows_for_output.extend(macro_rows)
+            calendar_attempts.append({
+                'provider': 'tradingeconomics',
+                'ok': True,
+                'rows': len(macro_rows),
+                'elapsed_seconds': time.perf_counter() - started,
+            })
             if macro_rows:
                 te_macro_out = prefixed_output_path('tradingeconomics_', args.macro_output) if args.tv_calendar else args.macro_output
                 write_catalyst_csv(te_macro_out, macro_rows)
@@ -1284,7 +1335,78 @@ def main():
             else:
                 print('Fetched 0 macro release rows from Trading Economics in the requested window.')
         except Exception as exc:
+            calendar_attempts.append({
+                'provider': 'tradingeconomics',
+                'ok': False,
+                'rows': 0,
+                'error': str(exc),
+                'elapsed_seconds': time.perf_counter() - started,
+            })
             print(f'Trading Economics fetch failed: {exc}')
+
+    for extra_file in args.macro_extra_file:
+        started = time.perf_counter()
+        try:
+            extra_events = load_catalyst_csv(extra_file, provider='macro_extra_file')
+            extra_rows = build_catalyst_rows(
+                extra_events,
+                as_of=args.as_of,
+                lookback_days=args.lookback_days,
+                lookahead_days=args.lookahead_days,
+                symbols=args.calendar_symbols,
+                include_closed=not args.skip_closed_catalysts,
+            )
+            rows.extend(extra_rows)
+            macro_rows_for_output.extend(extra_rows)
+            extra_attempts.append({
+                'provider': os.path.basename(extra_file),
+                'ok': True,
+                'rows': len(extra_rows),
+                'elapsed_seconds': time.perf_counter() - started,
+            })
+            print(f'Loaded {len(extra_rows)} extra macro catalyst rows from {extra_file}.')
+        except Exception as exc:
+            extra_attempts.append({
+                'provider': os.path.basename(extra_file),
+                'ok': False,
+                'rows': 0,
+                'error': str(exc),
+                'elapsed_seconds': time.perf_counter() - started,
+            })
+            print(f'Extra macro catalyst file failed ({extra_file}): {exc}')
+
+    if macro_rows_for_output:
+        combined_macro_rows = dedupe_catalyst_rows(macro_rows_for_output)
+        write_catalyst_csv(args.macro_output, combined_macro_rows)
+        if len(combined_macro_rows) != len(macro_rows_for_output):
+            print(f'Wrote {len(combined_macro_rows)} deduped macro rows to {args.macro_output}.')
+        elif args.macro_extra_file or args.te_calendar:
+            print(f'Wrote {len(combined_macro_rows)} combined macro rows to {args.macro_output}.')
+
+    if not args.skip_source_health:
+        try:
+            selected = ''
+            for attempt in calendar_attempts:
+                if attempt.get('ok') and int(attempt.get('rows') or 0) > 0:
+                    selected = str(attempt.get('provider') or '')
+                    break
+            record_attempts(
+                'economic_calendar',
+                calendar_attempts,
+                source_used=selected,
+                summary_path=args.source_health_output,
+                history_path=args.source_health_history,
+            )
+            if extra_attempts:
+                record_attempts(
+                    'macro_extra_file',
+                    extra_attempts,
+                    source_used='',
+                    summary_path=args.source_health_output,
+                    history_path=args.source_health_history,
+                )
+        except Exception as exc:
+            print(f'Source health write failed: {exc}')
 
     catalyst_events = []
     if args.calendar:

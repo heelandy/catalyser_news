@@ -27,6 +27,15 @@ class WebIngestContractTests(unittest.TestCase):
             "market_regime_conflict": "none",
             "market_rule_note": "Hot labor data can lift Fed pressure.",
             "live_market_regime_reason": "Yields and tape are bearish.",
+            "subscriber_summary": "Hot NFP creates downside pressure for NQ.",
+            "expected_market_effect": "Bearish for NQ/Nasdaq; avoid longs until reclaim confirmation.",
+            "standardized_risk_level": "HIGH",
+            "subscriber_reasoning": "Hot labor data can lift yields and pressure growth stocks.",
+            "risk_warning": "Wait for reclaim before considering long NQ.",
+            "watch_levels_json": '{"recent_high":21540.0,"recent_low":21480.5,"source":"test"}',
+            "invalidation_scenario": "Bearish read invalidates if NQ reclaims 21540.",
+            "expires_at": "2026-06-15T14:30:00Z",
+            "educational_disclaimer": "Educational and informational use only. This is not financial advice.",
         }
 
     def test_build_payload_maps_signal_row_to_canonical_contract(self):
@@ -40,7 +49,13 @@ class WebIngestContractTests(unittest.TestCase):
         self.assertEqual(payload["marketReaction"]["finalBias"], "BEARISH")
         self.assertEqual(payload["marketReaction"]["confidence"], 82)
         self.assertEqual(payload["marketReaction"]["bullishProbability"], 22.0)
+        self.assertEqual(payload["marketReaction"]["riskLevel"], "HIGH")
+        self.assertEqual(payload["marketReaction"]["expectedReaction"], "Bearish for NQ/Nasdaq; avoid longs until reclaim confirmation.")
+        self.assertEqual(payload["marketReaction"]["watchLevels"]["recent_high"], 21540.0)
+        self.assertEqual(payload["marketReaction"]["invalidation"], "Bearish read invalidates if NQ reclaims 21540.")
+        self.assertEqual(payload["marketReaction"]["expiresAt"], "2026-06-15T14:30:00Z")
         self.assertEqual(payload["alert"]["state"], "PENDING")
+        self.assertEqual(payload["alert"]["summary"], "Hot NFP creates downside pressure for NQ.")
         self.assertIn("Educational", payload["alert"]["disclaimer"])
 
     def test_waiting_rows_are_skipped_unless_requested(self):

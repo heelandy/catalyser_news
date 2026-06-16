@@ -27,6 +27,8 @@ describe("server environment", () => {
       STRIPE_WEBHOOK_SECRET: "",
       RESEND_API_KEY: "",
       TELEGRAM_BOT_TOKEN: "",
+      TELEGRAM_BOT_USERNAME: "",
+      TELEGRAM_WEBHOOK_SECRET: "",
       DISCORD_WEBHOOK_SECRET: "",
     });
 
@@ -38,6 +40,8 @@ describe("server environment", () => {
     expect(env.STRIPE_WEBHOOK_SECRET).toBeUndefined();
     expect(env.RESEND_API_KEY).toBeUndefined();
     expect(env.TELEGRAM_BOT_TOKEN).toBeUndefined();
+    expect(env.TELEGRAM_BOT_USERNAME).toBeUndefined();
+    expect(env.TELEGRAM_WEBHOOK_SECRET).toBeUndefined();
     expect(env.DISCORD_WEBHOOK_SECRET).toBeUndefined();
   });
 });
