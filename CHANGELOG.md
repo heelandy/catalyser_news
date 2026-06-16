@@ -28,6 +28,25 @@
   alert webhooks (ORB on NQ, options on SPY/QQQ) and writes
   `macro_tape_signals.json` for the live regime builder. Repaired two example
   JSON files that contained patch artifacts.
+- Wired TradingView into the live regime: the tape signal listener now starts
+  automatically with the pipeline (`START.bat` / start script, port 8788),
+  the stop/status scripts manage it, `TUNNEL.bat` opens a free Cloudflare
+  quick tunnel for TradingView alert webhooks, and the end-to-end chain
+  (alert POST -> `macro_tape_signals.json` -> regime builder component) is
+  verified. Fixed an invisible alert-popup overlay that blocked all clicks
+  and scrolling on the dashboard (`display` overriding the `hidden`
+  attribute), with a regression test.
+- Review fixes for the TradingView wiring: `STOP.bat` now stops the tape
+  signal listener by default (it previously survived every stop because the
+  kill block sat behind `-IncludeDashboard`), `TUNNEL.bat` accepts an optional
+  port argument to match a custom `-ListenerPort`, and the pipeline scripts
+  share one process enumeration instead of three. In the STACK indicator the
+  prop-eval halt buffer is clamped so it can never swallow a limit (a buffer
+  >= the daily/trailing limit used to suspend all signals at flat PnL), the
+  eval inputs gained sane minimums, and the tooltip no longer references a
+  non-existent AUTO strategy. The OPTIONS script dropped the dead single-side
+  strike/status block left over from the old dashboard, and both indicators
+  now share one `f_tstate` helper for the per-side state text.
 - Master-detail dashboard polish: selection no longer resets table scroll,
   double-click/Enter opens the expanded popup card, Arrow keys navigate rows,
   the detail panel scrolls independently, and surprise values display as

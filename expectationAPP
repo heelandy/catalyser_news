@@ -1,0 +1,1209 @@
+# Market Catalyst Alert System - Product Plan
+
+Last reviewed: 2026-06-15
+
+This file is the authoritative implementation guide for turning the existing
+local NQ Catalyst project into a secure subscription web application.
+
+## Checklist Rules
+
+- Use `[x]` only when the feature is implemented and verified.
+- Keep `[ ]` when the feature is missing, mocked, local-only, or incomplete.
+- Do not mark a parent milestone complete until every required child item is
+  complete.
+- When checking an item, add an evidence line with the date, files changed, and
+  tests or manual verification performed.
+- Preserve the existing Python pipeline. The web application should consume it
+  as the catalyst and alert engine rather than rewriting proven market logic.
+- Never commit passwords, tokens, Stripe secrets, SMTP credentials, or personal
+  subscriber data.
+
+## Product Goal
+
+Build a secure web application named **Market Catalyst Alert System** that:
+
+- Monitors financial news, economic releases, and market catalysts.
+- Interprets their possible effect on NQ futures, Nasdaq, and U.S. equities.
+- Produces risk-aware bullish, bearish, or neutral reaction analysis.
+- Delivers approved alerts to eligible subscribers by email, Telegram, and
+  Discord.
+- Clearly states that all content is educational and informational and is not
+  financial advice.
+
+## Architecture Decision
+
+- [x] Keep the current Python repository as the market catalyst engine.
+  - Evidence: existing pipeline modules fetch releases/news, build live regime,
+    calculate signals, detect alerts, and deliver notifications.
+- [x] Add a separate `web/` application using Next.js and TypeScript.
+  - Evidence 2026-06-15: `web/` Next.js App Router project created with
+    TypeScript, Tailwind, ESLint, Vitest, Zod env validation, Prisma
+    PostgreSQL config, health/readiness routes, and a local operational app
+    shell that reads existing Python pipeline status.
+- [x] Use PostgreSQL and Prisma for users, billing, preferences, alerts, and
+  audit records.
+- [x] Define a secure integration contract between the Python engine and the
+  web application.
+  - Preferred MVP: signed server-to-server webhook or authenticated ingestion
+    API from Python to Next.js.
+  - The browser must never read raw local CSV files in production.
+- [ ] Add a background job/queue strategy for alert fan-out and retries.
+- [ ] Define development, staging, and production environments.
+
+## Current Working Foundation
+
+These capabilities already exist locally and should be reused.
+
+### Catalyst and News Engine
+
+- [x] Fetch scheduled macroeconomic releases.
+- [x] Poll near release time with faster refresh behavior.
+- [x] Fetch and interpret Yahoo Finance JSON/RSS headlines.
+- [x] Support TradingView news-flow as a configured fallback/source.
+- [x] Track NQ/QQQ/SPY/Nasdaq and major semiconductor symbols.
+- [x] Detect rates, Treasury yield, inflation, labor, Fed, geopolitical,
+  technology, risk-on, and risk-off language.
+- [x] Deduplicate repeated headlines.
+- [x] Discount stale and low-signal news.
+- [ ] Add explicit earnings-calendar ingestion and earnings surprise handling.
+- [ ] Add durable source health metrics and provider failover history.
+
+Evidence: `catalyser_news.py`, `macro_news_feed.py`,
+`macro_pipeline_runner.py`, `tests/test_news_feed.py`, and
+`tests/test_release_timing.py`.
+
+### Market Reaction Engine
+
+- [x] Produce event title and release time.
+- [x] Produce bullish, bearish, mixed, or neutral direction.
+- [x] Produce bullish probability and confidence.
+- [x] Separate release-rule direction from live market regime.
+- [x] Produce trade state and regime-conflict warnings.
+- [x] Use historical reaction profiles and trust adjustments.
+- [x] Use tape/news confirmation instead of relying only on the release value.
+- [ ] Produce a concise subscriber-ready event summary for every alert.
+- [ ] Produce a standardized expected NQ/Nasdaq/stock-market effect field.
+- [ ] Produce a standardized risk level field for every alert.
+- [ ] Produce suggested watch levels from live market data.
+- [ ] Produce an invalidation scenario for every directional alert.
+- [ ] Produce a time-sensitivity/expiry field for every alert.
+- [ ] Attach the educational disclaimer to every stored and delivered alert.
+
+Evidence: `macro_reaction_study.py`, `macro_signal_trust.py`,
+`macro_regime.py`, `macro_live_regime_builder.py`, and
+`macro_daily_confirmation.py`.
+
+### Local Alert Delivery
+
+- [x] Detect new releases, signal changes, probability changes, confidence
+  changes, live-regime changes, and risk-lock conflicts.
+- [x] Display dashboard popup alerts.
+- [x] Support SMTP email delivery.
+- [x] Support Telegram Bot API delivery.
+- [x] Support Discord webhook delivery.
+- [x] Support local risk-lock output.
+- [x] Prevent duplicate delivery with alert fingerprints.
+- [ ] Replace the single local recipient configuration with per-user alert
+  preferences stored in PostgreSQL.
+- [ ] Add retry policy, dead-letter handling, and delivery status per channel.
+- [ ] Add unsubscribe and channel-disable handling.
+- [ ] Add plan-based alert limits and priority.
+
+Evidence: `macro_pipeline_alerts.py`, `macro_alert_notify.py`,
+`macro_alert_notify_config.example.json`, `tools/dashboard_server.py`, and
+alert-related tests under `tests/`.
+
+### Local Operations and Reliability
+
+- [x] Background runner startup and shutdown scripts.
+- [x] Duplicate-runner PID/token lock.
+- [x] Log rotation.
+- [x] Stale-data dashboard warning.
+- [x] Dashboard CSS/JS asset version hashes.
+- [x] UTC-to-ET display checks.
+- [x] Unit tests for news interpretation, release timing, runner lock, alert
+  clustering, risk locks, dashboard contracts, and the local email API.
+- [ ] Add production observability, error tracking, uptime checks, and alerting.
+
+## MVP Build Order
+
+Complete phases in order. Do not skip authentication, authorization, billing
+state, or webhook security to make the UI appear finished.
+
+## Phase 1 - Web Project Foundation
+
+- [x] Create `web/` with Next.js App Router and TypeScript.
+- [x] Configure Tailwind CSS using a restrained operational dashboard design.
+- [x] Configure ESLint, formatting, type checking, and test commands.
+- [x] Add `.env.example` with names only, never real secrets.
+- [x] Add server-side environment validation with Zod.
+- [x] Add PostgreSQL connection configuration.
+- [x] Add Prisma and initial migration workflow.
+- [x] Add local development commands to the root README.
+- [x] Add health/readiness endpoints.
+- [x] Verify the app starts locally with no errors.
+
+Evidence 2026-06-15: created the `web/` Next.js app, server environment
+validation, PostgreSQL/Prisma configuration, health/readiness API routes, root
+and web README startup commands, and a responsive foundation dashboard. Verified
+with formatter check, lint, type check, Vitest tests, Prisma validation/client
+generation, production build, HTTP checks, and desktop/mobile screenshots.
+
+Phase 1 completion evidence:
+
+- [x] `web/package.json`, configuration files, and app shell exist.
+- [x] Type check passes.
+- [x] Lint passes.
+- [x] Basic tests pass.
+- [x] Local URL is documented and verified.
+
+## Phase 2 - Database Schema
+
+Create Prisma models and migrations for:
+
+- [x] User
+- [x] Account/session models required by the authentication provider
+- [x] Plan
+- [x] Subscription
+- [x] Payment
+- [x] Invoice
+- [x] Coupon
+- [x] Alert
+- [x] AlertPreference
+- [x] NewsEvent
+- [x] MarketReaction
+- [x] AlertDeliveryAttempt
+- [x] DiscordConnection
+- [x] TelegramConnection
+- [x] AdminAuditLog
+- [x] SecurityAuditLog
+
+Evidence 2026-06-15: added the Phase 2 PostgreSQL Prisma schema in
+`web/prisma/schema.prisma`, generated
+`web/prisma/migrations/20260615020000_phase_2_schema/migration.sql`, added
+`web/prisma/seed.ts`, and added `web/src/lib/schema-contract.test.ts`.
+Verified with `npm run check`, `npm run db:validate`, `npm run db:generate`,
+and npm audit with zero vulnerabilities.
+
+Schema requirements:
+
+- [x] Use enums for role, subscription state, alert state, channel, bias, and
+  risk level.
+- [x] Add unique constraints for provider IDs and idempotency keys.
+- [x] Add indexes for alert time, subscription status, user lookup, and billing
+  webhook processing.
+- [x] Add ownership relations needed to prevent IDOR access.
+- [x] Define retention rules for security and delivery logs.
+- [x] Migration and seed scripts run successfully on a clean database.
+  - Evidence 2026-06-15: installed PostgreSQL 17, created the local
+    `market_catalyst` database and `market_catalyst_app` role, applied
+    `20260615020000_phase_2_schema` with `npm run db:deploy`, seeded Free,
+    Basic, Pro, and Elite with `npm run db:seed`, and verified them with
+    `npm run db:verify`. `prisma migrate status` reports the schema is up to
+    date.
+
+## Phase 3 - Authentication and Roles
+
+- [x] Implement Auth.js with the Prisma adapter and PostgreSQL database sessions.
+- [x] Keep credentials login disabled so the application stores no passwords.
+- [x] Implement email ownership verification through single-use Resend magic
+  links that expire after 15 minutes.
+- [x] Keep password reset unavailable while password credentials are disabled.
+- [x] Use Auth.js secure, HTTP-only session-cookie defaults and a generated local
+  `AUTH_SECRET`.
+- [x] Rate-limit magic-link requests to five attempts per email hash in 15
+  minutes, followed by a 30-minute block.
+- [x] Add roles: Free User, Paid Subscriber, and Admin.
+- [x] Add server-side role checks.
+- [x] Protect all current admin routes.
+- [x] Protect all current subscriber billing and preference routes.
+- [x] Add ownership authorization rules and IDOR-focused tests.
+- [x] Add authentication and authorization tests.
+- [ ] Configure `RESEND_API_KEY` and a verified `AUTH_EMAIL_FROM`, then complete
+  a live magic-link delivery and sign-in test.
+
+Phase 3 implementation note: Auth.js 5 uses passwordless email authentication,
+the existing Prisma account/session/token models, database-backed sessions,
+server-side route guards, and role/ownership policies. Anonymous access to
+`/admin`, `/account/billing`, and `/account/preferences` redirects to sign-in.
+The admin page additionally requires the `ADMIN` role. The local browser check
+passed; live email delivery is intentionally disabled until Resend credentials
+are supplied.
+
+## Phase 4 - Plans and Stripe Billing
+
+### Plans
+
+- [x] Free plan: account access and delayed limited summaries.
+- [x] Basic plan: email alerts, daily alert limit, and basic history.
+- [x] Pro plan: real-time email/Telegram/Discord, full analysis, preferences.
+- [x] Elite plan: fastest NQ-focused priority alerts and premium community
+  access.
+- [x] Define exact feature entitlements in code and database records.
+
+Plan implementation note: `web/src/lib/plan-catalog.ts` is the authoritative
+catalog. PostgreSQL is seeded and verified against it. Server-side resolution
+requires a valid active/trialing subscription, or a bounded past-due grace
+period, before paid entitlements are returned. A paid role by itself does not
+grant premium access. The initial monthly/quarterly/annual prices are Free
+`$0/$0/$0`, Basic `$29/$79/$290`, Pro `$79/$219/$790`, and Elite
+`$149/$419/$1,490`. Stripe product and price IDs remain unset.
+
+### Billing Options
+
+- [x] Monthly billing through Stripe Checkout price mapping.
+- [x] Quarterly billing through Stripe Checkout price mapping.
+- [x] Annual billing through Stripe Checkout price mapping.
+- [x] Promo-code entry is enabled in Stripe Checkout; local coupon management is
+  still pending.
+- [ ] Optional trial.
+- [ ] Upgrade plan.
+- [ ] Downgrade plan.
+- [ ] Cancel at period end.
+- [ ] Resume subscription.
+- [ ] Update payment method.
+- [ ] View invoices.
+- [ ] Download receipts.
+
+### Stripe Integration
+
+- [x] Stripe Checkout.
+- [x] Stripe Customer Portal endpoint.
+- [x] Stripe webhook endpoint.
+- [x] Verify Stripe webhook signatures before parsing business events.
+- [x] Store and enforce webhook idempotency.
+- [x] Synchronize customer, subscription, invoice, and payment status.
+- [x] Handle failed payments and grace periods.
+- [x] Remove premium access after grace period.
+- [x] Restore premium access after successful recovery.
+- [x] Remove access immediately after qualifying full refund/chargeback policy.
+- [x] Preserve access until period end for normal cancellations.
+- [ ] Allow audited admin overrides.
+- [x] Never store raw card information.
+- [ ] Add Stripe sandbox integration tests.
+
+Stripe implementation note: Billing routes are present but fail closed until
+test-mode credentials are configured. Checkout uses database Stripe price IDs
+from the plan rows, so run `npm run stripe:sync-catalog` after adding a
+`sk_test_...` key. The webhook route reads the raw request body and verifies the
+`stripe-signature` header before creating any local business records. Processed
+Stripe event IDs are stored in `StripeWebhookEvent` to prevent replayed webhook
+events from changing subscriptions twice. Customer Portal support is exposed as
+an authenticated endpoint; the actual portal features depend on Stripe's test
+portal configuration.
+
+## Phase 5 - Subscriber Dashboard
+
+- [x] Display current plan and subscription state.
+- [x] Display trial or billing-period end date.
+- [x] Render upgrade and downgrade Checkout controls and Customer Portal entry
+  for cancel/resume management.
+- [x] Open Stripe Customer Portal endpoint to update payment method after a
+  Stripe customer exists.
+- [x] View invoice history and download receipt links when Stripe invoices are
+  synced.
+- [x] View eligible catalyst alert history.
+- [x] Enforce delayed/limited summaries for Free users.
+- [x] Manage email alert preference.
+- [ ] Connect and disconnect Telegram.
+- [ ] Connect and disconnect Discord.
+- [x] Select event families, symbols, minimum confidence, risk levels, quiet
+  hours, and preferred channels.
+- [x] Show channel verification and recent delivery status.
+- [x] Display the financial-information disclaimer clearly.
+- [x] Add responsive desktop and mobile validation.
+
+Subscriber dashboard implementation note: `/account/billing` and
+`/account/preferences` now load server-side account state through
+`web/src/lib/account-data.ts`. Billing shows the current resolved plan,
+subscription state, trial/grace/period end date, Stripe Checkout buttons,
+Customer Portal entry, invoice rows, receipt links, and eligible alert history.
+Preferences save to `AlertPreference` through a server action and gate
+Email/Telegram/Discord by plan entitlement. Free users only see sent alerts
+after their plan delay and within their limited history window. Telegram and
+Discord connection flows remain pending for Phase 8; the dashboard only shows
+their availability and verification state for now.
+
+## Phase 6 - Admin Dashboard and Approval Workflow
+
+- [x] View incoming news events.
+- [x] View generated market reactions.
+- [x] Approve an alert before fan-out.
+- [x] Edit an alert before fan-out.
+- [x] Reject an alert with a recorded reason.
+- [x] Support optional auto-approval rules only for reviewed high-confidence
+  event families.
+- [x] View alert and delivery history.
+- [ ] View and manage subscribers.
+- [x] Filter active, trialing, canceled, past-due, and unpaid users.
+- [x] View failed payments.
+- [ ] Manually grant or revoke access with required reason and audit log.
+- [ ] View revenue, MRR, subscriber counts, and churn.
+- [ ] Export subscriber data with authorization and audit logging.
+- [x] Record every admin mutation in `AdminAuditLog`.
+- [x] Verify non-admin users cannot load admin data or invoke admin actions.
+
+Phase 6 implementation note: `/admin` now loads a server-side operations
+snapshot through `web/src/lib/admin-data.ts`, including news events, market
+reactions, draft/pending alerts, alert and delivery history, subscriber status
+filters, failed payments, revenue totals, and audit logs. Alert edit, approve,
+and reject actions in `web/src/app/admin/actions.ts` require `ADMIN` role and
+write `AdminAuditLog` rows. Auto-approval support is intentionally a
+disabled-by-default policy gate in `web/src/lib/admin-workflow.ts`; it only
+allows reviewed high-confidence event families with acceptable risk and no
+live-regime conflict. Full subscriber management, manual access overrides,
+staff permission tiers, exports, MRR/churn reporting, and support/admin modules
+remain pending.
+
+Evidence 2026-06-15: implemented `web/src/app/admin/page.tsx`,
+`web/src/app/admin/actions.ts`, `web/src/lib/admin-data.ts`,
+`web/src/lib/admin-workflow.ts`, `web/src/lib/admin-workflow.test.ts`, and
+`web/tools/verify_admin_dashboard.ts`. Verified with `npm run check`,
+`npm run verify:account-dashboard`, and `npm run verify:admin-dashboard` on a
+local production server.
+
+## Phase 7 - Python Engine to Web Integration
+
+- [x] Define the canonical alert payload schema.
+- [x] Include headline, summary, bias, expected reaction, confidence, reasoning,
+  risk warning, watch levels, invalidation, timestamp, expiry, and disclaimer.
+- [x] Add schema validation on both Python and Next.js sides.
+- [x] Add signed ingestion requests with replay protection.
+- [x] Persist NewsEvent, MarketReaction, and Alert records transactionally.
+- [x] Add idempotency so repeated pipeline cycles cannot create duplicate alerts.
+- [x] Add moderation state: draft, pending, approved, rejected, sent, expired.
+- [x] Route approved alerts to the delivery queue.
+- [x] Confirm the existing local dashboard continues working during migration.
+- [ ] Add integration tests using representative CPI, NFP, FOMC, yields, tech,
+  earnings, and geopolitical events.
+
+Phase 7 implementation note: `web/src/lib/engine-ingest-contract.ts` defines
+the canonical versioned payload and HMAC signature contract for Python-engine
+alerts. `POST /api/engine/alerts` verifies
+`x-market-catalyst-timestamp` and `x-market-catalyst-signature`, rejects stale
+requests outside a five-minute replay window, validates the payload with Zod,
+and writes `NewsEvent`, `MarketReaction`, and `Alert` in one transaction through
+`web/src/lib/engine-ingest-store.ts`. Duplicate runner cycles are blocked by
+`idempotencyKey` and `sourceFingerprint`. `macro_web_ingest.py` builds the same
+payload from `macro_live_signal_current.csv`, validates it locally, signs it,
+and supports dry-run inspection before posting. Approved-alert fan-out now
+creates per-subscriber delivery queue records for eligible users. Provider
+dispatch from that queue remains pending for Phase 8.
+
+Evidence 2026-06-15: implemented
+`web/src/app/api/engine/alerts/route.ts`,
+`web/src/lib/engine-ingest-contract.ts`,
+`web/src/lib/engine-ingest-store.ts`,
+`web/src/lib/engine-ingest-contract.test.ts`,
+`web/tools/verify_engine_ingest.ts`, `macro_web_ingest.py`, and
+`tests/test_web_ingest_contract.py`. Verified with `npm run check`,
+`npm run verify:engine-ingest` against a local production server with a
+temporary ingest secret, `python -m py_compile .\macro_web_ingest.py`,
+`python -m unittest discover -s tests`, a dry-run payload built from the
+current `macro_live_signal_current.csv`, and `npm run verify:admin-dashboard`
+after the Phase 8 queue wiring.
+
+## Phase 8 - Per-Subscriber Alert Delivery
+
+- [x] Use Resend or SendGrid for production email.
+- [ ] Keep SMTP available only as a local development fallback.
+- [ ] Implement verified Telegram connection flow.
+- [ ] Validate Telegram webhook authenticity and expected bot/chat ownership.
+- [ ] Implement secure Discord connection/webhook flow.
+- [ ] Protect stored channel credentials/tokens.
+- [x] Resolve plan entitlements before queueing each delivery.
+- [x] Apply subscriber preferences before queueing each delivery.
+- [x] Apply Basic daily alert limits.
+- [x] Apply Pro/Elite priority rules.
+- [x] Add retry with exponential backoff.
+- [x] Add delivery attempt audit records and failure reason categories.
+- [x] Ensure one subscriber's delivery failure does not block others.
+- [ ] Add channel-specific integration tests.
+
+Phase 8 delivery note: approving an alert in
+`web/src/app/admin/actions.ts` now calls `queueApprovedAlert`, which creates
+idempotent `AlertDeliveryAttempt` queue rows for eligible paid subscribers.
+`web/src/lib/delivery-queue.ts` resolves active paid access, plan
+entitlements, Basic daily limits, channel verification, preferences, quiet
+hours, plan delay, priority rank, payload digest, destination hash, retention,
+and duplicate-safe idempotency keys. `web/src/lib/delivery-policy.ts` builds
+the subscriber payload with headline, market bias, expected reaction,
+confidence, reasoning, risk warning, timestamp, expiry, watch levels,
+invalidation, and disclaimer. `web/src/lib/delivery-dispatch.ts` processes due
+email attempts through Resend, marks `SENT`, `FAILED`, `SKIPPED`, or
+`DEAD_LETTER`, stores provider IDs and failure categories, moves the parent
+alert to `SENT` after the first accepted email, schedules exponential retries,
+and keeps processing other subscribers if one delivery fails. Real
+Telegram/Discord connection flows are still pending.
+
+Evidence 2026-06-15: implemented `web/src/lib/delivery-policy.ts`,
+`web/src/lib/delivery-queue.ts`, `web/src/lib/delivery-policy.test.ts`, and
+updated `web/src/app/admin/actions.ts` plus
+`web/tools/verify_admin_dashboard.ts`. Verified with `npm run check`,
+`npm run verify:admin-dashboard` against a local production server, and
+`python -m unittest discover -s tests`.
+
+Evidence 2026-06-15: implemented `web/src/lib/delivery-dispatch.ts`,
+`web/src/lib/delivery-dispatch.test.ts`, `web/tools/process_delivery_queue.ts`,
+and the `npm run delivery:process` command. Verified with `npm run check`,
+`npm run delivery:process -- --dry-run --limit 5`, and
+`python -m unittest discover -s tests`.
+
+Every delivered alert must include:
+
+- [x] Headline.
+- [x] Market bias.
+- [x] Expected reaction.
+- [x] Confidence level.
+- [x] Short reasoning.
+- [x] Risk warning.
+- [x] Timestamp and expiry/time sensitivity.
+- [x] Educational/informational disclaimer.
+
+## Phase 9 - Security Hardening
+
+- [ ] Server-side permission check on every protected read and mutation.
+- [ ] Input validation with Zod at every external boundary.
+- [ ] Rate limiting for login, password reset, ingestion, webhooks, and sensitive
+  APIs.
+- [x] CSRF protection where cookie-authenticated mutations require it.
+- [ ] XSS-safe rendering and content sanitization for external news.
+- [ ] Parameterized database access through Prisma; no unsafe string-built SQL.
+- [ ] IDOR tests for users, subscriptions, invoices, alerts, and connections.
+- [ ] Secure headers and Content Security Policy.
+- [ ] Secret redaction in logs and errors.
+- [ ] Generic user-facing errors that do not leak internals.
+- [ ] Stripe webhook signature and replay protection.
+- [ ] Telegram webhook validation and abuse controls.
+- [ ] Discord webhook security and abuse controls.
+- [ ] Admin action audit logs.
+- [ ] Security event audit logs.
+- [ ] Dependency update and vulnerability policy.
+- [ ] Database backup and restoration procedure.
+- [ ] Production secret rotation procedure.
+
+Phase 9 form and URL protection note: current HTML mutation forms now include
+encrypted, authenticated, time-limited form tokens using
+`web/src/lib/protected-form.ts`. The token is bound to a form scope and, for
+signed-in areas, the current user ID. Magic-link sign-in, account preferences,
+and admin alert review actions reject missing, expired, tampered, wrong-scope,
+or wrong-user tokens. Return URLs are sanitized by `safeInternalRedirect`, and
+the auth proxy now protects every `/account/*` path. Cookie-authenticated
+billing API mutations reject cross-origin `Origin` headers through
+`web/src/lib/request-security.ts`.
+
+Evidence 2026-06-15: implemented `web/src/lib/protected-form.ts`,
+`web/src/lib/protected-form.test.ts`, `web/src/lib/request-security.ts`,
+`web/src/lib/request-security.test.ts`, updated sign-in/preferences/admin
+forms and actions, tightened `web/src/lib/authz.ts`, and broadened
+`web/proxy.ts`. Verified with `npm run check`,
+`npm run verify:admin-dashboard`, and `python -m unittest discover -s tests`.
+
+## Phase 10 - Cybersecurity Audit
+
+- [ ] Create `SECURITY_AUDIT_REPORT.md`.
+- [ ] Static code review.
+- [ ] Dependency vulnerability scan.
+- [ ] Route permission audit.
+- [ ] Authentication flow audit.
+- [ ] Payment flow audit.
+- [ ] Stripe webhook spoofing/replay audit.
+- [ ] Telegram and Discord abuse audit.
+- [ ] OWASP Top 10 manual checklist.
+- [ ] Test broken authentication.
+- [ ] Test broken access control and admin exposure.
+- [ ] Test SQL injection risk.
+- [ ] Test stored/reflected XSS risk.
+- [ ] Test CSRF risk.
+- [ ] Test IDOR risk.
+- [ ] Test brute-force and rate-limit bypass.
+- [ ] Test sensitive-data and environment-variable exposure.
+- [ ] Record vulnerability, risk, location, explanation, fix, and remaining risk.
+- [ ] Fix all critical and high-risk findings.
+- [ ] Record final pass/fail status.
+
+## Phase 11 - Final Testing and Release Readiness
+
+- [ ] Unit tests pass.
+- [ ] Integration tests pass.
+- [ ] End-to-end tests pass for Free, Basic, Pro, Elite, and Admin roles.
+- [ ] Stripe test-mode flows pass for subscribe, upgrade, downgrade, cancel,
+  failed payment, grace period, recovery, and refund.
+- [ ] Alert ingestion-to-delivery test passes for email, Telegram, and Discord.
+- [ ] Free users cannot access premium alert data.
+- [ ] Canceled users keep access only until the billing period ends.
+- [ ] Past-due users follow the configured grace-period rules.
+- [ ] Unpaid/refunded users lose access according to policy.
+- [ ] Admin routes and actions are protected.
+- [ ] No frontend bundle contains server secrets.
+- [ ] Security audit passes with no unresolved critical/high findings.
+- [ ] Production setup and rollback instructions are documented.
+- [ ] Application runs locally with no errors.
+
+## Product Acceptance Checklist
+
+The commercial product is complete only when all items below are checked.
+
+- [ ] Users can create and verify accounts.
+- [ ] Users can subscribe to paid plans.
+- [ ] Stripe subscriptions synchronize correctly.
+- [ ] Failed payments update account access correctly.
+- [ ] Premium access is removed when payment access expires.
+- [ ] Premium access is restored after successful payment recovery.
+- [ ] Admins can approve, edit, and reject alerts before sending.
+- [ ] Eligible subscribers receive alerts through selected channels.
+- [ ] Free users cannot access premium features.
+- [ ] Admin routes are protected server-side.
+- [ ] API keys and secrets are not exposed.
+- [ ] `SECURITY_AUDIT_REPORT.md` exists.
+- [ ] Critical and high-risk security findings are fixed.
+- [ ] The application runs locally and passes its release test suite.
+
+## Next Task
+
+- [x] Add the provider dispatch worker for queued `AlertDeliveryAttempt` rows:
+  send email first, mark sent/delivered/failed, schedule retries with
+  exponential backoff, and ensure one subscriber failure does not block others.
+- [ ] Configure `RESEND_API_KEY` and `AUTH_EMAIL_FROM`, then run a live
+  `npm run delivery:process -- --limit 5` test against one verified test
+  subscriber.
+- [ ] Add Stripe test-mode keys to `web/.env.local`, run
+  `npm run stripe:sync-catalog`, configure the Stripe Customer Portal in test
+  mode, and complete a real sandbox Checkout plus webhook replay test.
+- [ ] Configure the Resend API key and verified sender in `web/.env.local`, then
+  run a live email magic-link sign-in.
+
+
+
+1.	ADMIN PURPOSE 
+What to do:
+Create a secure control center where app owners, staff, moderators, managers, and support teams can manage the entire application.
+How to do it:
+The admin panel should allow authorized users to view users, manage settings, review activity, control permissions, handle reports, monitor payments, manage content, and audit system behavior.
+Expected output:
+One dashboard that controls the app without needing direct database access.
+==================================================
+2.	ADMIN USER ROLES 
+What to do:
+Create different admin permission levels.
+How to do it:
+Use role-based access control.
+Main roles:
+SUPER ADMIN
+Full access to everything.
+Can create other admins.
+Can change system settings.
+Can delete or suspend accounts.
+Can view logs and financial records.
+ADMIN
+Can manage users, content, reports, and daily operations.
+Cannot change critical system settings unless allowed.
+MANAGER
+Can view reports, approve actions, and supervise staff.
+Limited access to sensitive data.
+SUPPORT STAFF
+Can view user issues, tickets, account status, and basic user information.
+Cannot delete users or change system rules.
+MODERATOR
+Can approve, reject, flag, hide, or remove content.
+Can handle user reports.
+FINANCE ADMIN
+Can view payments, subscriptions, payouts, invoices, refunds, and revenue.
+READ-ONLY ADMIN
+Can view dashboards and reports only.
+Cannot make changes.
+==================================================
+3.	ADMIN LOGIN SYSTEM 
+What to do:
+Secure the admin area separately from normal user login.
+How to do it:
+Create a dedicated admin login page.
+Required features:
+Email and password login
+Two-factor authentication
+Password reset
+Login attempt limits
+Device/session tracking
+IP logging
+Forced logout option
+Session timeout
+Admin activity logging
+Expected output:
+Only trusted users can enter the admin system.
+==================================================
+4.	ADMIN DASHBOARD 
+What to do:
+Create a main dashboard that shows the health of the app.
+How to do it:
+Display the most important information immediately.
+Dashboard sections:
+Total users
+Active users
+New users today
+Suspended users
+Revenue
+Failed payments
+Open support tickets
+Pending approvals
+System errors
+Security alerts
+Server status
+Database status
+API status
+Recent admin actions
+Expected output:
+The admin can understand what is happening in the app in less than 30 seconds.
+==================================================
+5.	USER MANAGEMENT MODULE 
+What to do:
+Allow admins to manage app users.
+How to do it:
+Create a user table with search, filter, and action buttons.
+User information:
+Name
+Email
+Phone number
+Account status
+Role
+Signup date
+Last login
+Subscription status
+Payment status
+Verification status
+Warnings
+Notes
+Activity history
+Admin actions:
+View user profile
+Edit user information
+Reset password
+Suspend account
+Ban account
+Reactivate account
+Verify user
+Add internal note
+View login history
+View payment history
+Delete account only if allowed
+Expected output:
+Admins can solve user problems and control account access safely.
+==================================================
+6.	ADMIN MANAGEMENT MODULE 
+What to do:
+Allow Super Admins to manage other admins.
+How to do it:
+Create an admin user section.
+Features:
+Create admin
+Edit admin role
+Disable admin
+Force password reset
+Require 2FA
+View admin activity
+Limit permissions
+Remove admin access
+Expected output:
+The owner controls who can access the admin panel.
+==================================================
+7.	PERMISSION SYSTEM 
+What to do:
+Prevent every admin from having full access.
+How to do it:
+Use permissions attached to roles.
+Examples:
+users.view
+users.edit
+users.delete
+users.suspend
+payments.view
+payments.refund
+content.approve
+content.delete
+settings.update
+admins.create
+logs.view
+reports.export
+Expected output:
+Each staff member only sees and changes what they are allowed to.
+==================================================
+8.	CONTENT MANAGEMENT MODULE 
+What to do:
+Allow admins to manage app content.
+How to do it:
+Create sections for posts, pages, files, images, videos, products, lessons, rules, FAQs, or whatever the app uses.
+Admin actions:
+Create content
+Edit content
+Publish content
+Unpublish content
+Delete content
+Approve content
+Reject content
+Flag content
+Review reports
+Manage categories
+Manage tags
+Expected output:
+The app content can be controlled without touching the code.
+==================================================
+9.	REPORTS AND MODERATION MODULE 
+What to do:
+Allow admins to handle bad behavior, spam, violations, and user reports.
+How to do it:
+Create a report queue.
+Report details:
+Reported user
+Reporter
+Reason
+Content involved
+Date reported
+Status
+Assigned moderator
+Decision history
+Report status:
+Pending
+Under review
+Resolved
+Rejected
+Escalated
+Admin actions:
+Warn user
+Remove content
+Suspend user
+Ban user
+Dismiss report
+Escalate to Super Admin
+Expected output:
+The app has a clear safety and moderation system.
+==================================================
+10.	PAYMENT AND SUBSCRIPTION MODULE 
+What to do:
+Allow admins to monitor money-related activity.
+How to do it:
+Create a finance dashboard.
+Track:
+Payments
+Subscriptions
+Refunds
+Failed payments
+Invoices
+Payouts
+Coupons
+Free trials
+Plan upgrades
+Plan cancellations
+Admin actions:
+View payment history
+Cancel subscription
+Issue refund
+Apply coupon
+Extend trial
+Change plan
+Mark payment issue
+Export financial report
+Expected output:
+Admins can manage revenue and customer billing issues.
+==================================================
+11.	SUPPORT TICKET MODULE 
+What to do:
+Allow users to contact support and allow admins to respond.
+How to do it:
+Create a ticket system.
+Ticket fields:
+User
+Subject
+Message
+Priority
+Status
+Assigned staff
+Date created
+Last updated
+Attachments
+Internal notes
+Ticket status:
+Open
+Pending
+Waiting for user
+Resolved
+Closed
+Admin actions:
+Reply to user
+Assign ticket
+Escalate ticket
+Close ticket
+Add note
+Attach file
+Expected output:
+User problems are organized and tracked.
+==================================================
+12.	SETTINGS MODULE 
+What to do:
+Allow approved admins to change app behavior.
+How to do it:
+Create a system settings page.
+Settings examples:
+App name
+Logo
+Maintenance mode
+Signup enabled/disabled
+Email verification required
+Subscription plans
+Feature flags
+Notification settings
+Security rules
+API keys
+Default user role
+Terms and privacy links
+Expected output:
+The app can be adjusted without changing code.
+==================================================
+13.	ANALYTICS AND REPORTING MODULE 
+What to do:
+Give admins clear data about app performance.
+How to do it:
+Create reports and charts.
+Track:
+Daily active users
+Monthly active users
+Signups
+Revenue
+Retention
+Churn
+Most used features
+Least used features
+Conversion rate
+Support volume
+Error rate
+User growth
+Payment success rate
+Expected output:
+Admins can make decisions based on real data.
+==================================================
+14.	AUDIT LOG SYSTEM 
+What to do:
+Record every important admin action.
+How to do it:
+Save logs every time an admin changes something.
+Audit log should include:
+Admin name
+Action taken
+Target user or item
+Old value
+New value
+Date and time
+IP address
+Device info
+Examples:
+Admin suspended user
+Admin changed subscription
+Admin deleted post
+Admin issued refund
+Admin changed settings
+Expected output:
+You can trace who did what and when.
+==================================================
+15.	NOTIFICATION SYSTEM 
+What to do:
+Alert admins when important things happen.
+How to do it:
+Create internal notifications and optional email alerts.
+Admin alerts:
+Payment failed
+System error
+New report
+High-priority ticket
+Suspicious login
+Server issue
+User verification pending
+Refund requested
+Database backup failed
+Expected output:
+Admins do not miss critical events.
+==================================================
+16.	SECURITY ARCHITECTURE 
+What to do:
+Protect the admin panel from attacks.
+How to do it:
+Use strong security controls.
+Required security:
+HTTPS only
+Two-factor authentication
+Strong passwords
+Session expiration
+Role permissions
+IP logging
+Rate limiting
+CSRF protection
+XSS protection
+SQL injection protection
+Encrypted sensitive data
+Backup system
+Admin action logs
+No direct database editing
+Expected output:
+The admin system is secure and trustworthy.
+==================================================
+17.	DATABASE STRUCTURE 
+What to do:
+Create tables that support admin control.
+How to do it:
+Use a clean database design.
+Main tables:
+users
+id
+name
+email
+phone
+password_hash
+role
+status
+created_at
+updated_at
+last_login
+admin_users
+id
+user_id
+admin_role
+two_factor_enabled
+status
+created_at
+roles
+id
+name
+description
+permissions
+id
+name
+description
+role_permissions
+role_id
+permission_id
+audit_logs
+id
+admin_id
+action
+target_type
+target_id
+old_value
+new_value
+ip_address
+created_at
+support_tickets
+id
+user_id
+subject
+message
+priority
+status
+assigned_to
+created_at
+payments
+id
+user_id
+amount
+status
+provider
+transaction_id
+created_at
+subscriptions
+id
+user_id
+plan
+status
+start_date
+end_date
+reports
+id
+reporter_id
+reported_user_id
+reason
+status
+created_at
+notifications
+id
+user_id
+type
+message
+read_status
+created_at
+settings
+id
+key
+value
+updated_by
+updated_at
+==================================================
+18.	BACKEND ARCHITECTURE 
+What to do:
+Create backend services for admin actions.
+How to do it:
+Separate admin logic from normal app logic.
+Backend modules:
+Auth service
+User service
+Admin service
+Permission service
+Payment service
+Ticket service
+Report service
+Notification service
+Audit log service
+Settings service
+Analytics service
+Expected output:
+The backend stays organized and easy to scale.
+==================================================
+19.	FRONTEND ADMIN PANEL 
+What to do:
+Build a clean admin interface.
+How to do it:
+Create pages for each admin module.
+Admin pages:
+Login
+Dashboard
+Users
+Admins
+Roles
+Permissions
+Content
+Reports
+Payments
+Subscriptions
+Support Tickets
+Notifications
+Analytics
+Audit Logs
+Settings
+System Health
+Expected output:
+Admins can control the app from a simple web interface.
+==================================================
+20.	API STRUCTURE 
+What to do:
+Create secure admin API routes.
+How to do it:
+Protect every admin route with authentication and permission checks.
+Example routes:
+POST /admin/login
+GET /admin/dashboard
+GET /admin/users
+GET /admin/users/:id
+PATCH /admin/users/:id
+POST /admin/users/:id/suspend
+POST /admin/users/:id/ban
+GET /admin/payments
+POST /admin/refunds
+GET /admin/reports
+PATCH /admin/reports/:id
+GET /admin/tickets
+PATCH /admin/tickets/:id
+GET /admin/audit-logs
+GET /admin/settings
+PATCH /admin/settings
+Expected output:
+The admin frontend communicates safely with the backend.
+==================================================
+21.	SYSTEM HEALTH MODULE 
+What to do:
+Allow admins to monitor technical performance.
+How to do it:
+Show app infrastructure status.
+Track:
+Server uptime
+Database health
+API response time
+Error logs
+Memory usage
+CPU usage
+Storage usage
+Email service status
+Payment provider status
+Backup status
+Expected output:
+Admins know when the system has a technical problem.
+==================================================
+22.	BACKUP AND RECOVERY 
+What to do:
+Protect the app from data loss.
+How to do it:
+Create automatic backups.
+Backup rules:
+Daily database backup
+Weekly full backup
+Encrypted backup storage
+Backup success notification
+Restore testing
+Emergency recovery process
+Expected output:
+The app can recover if something goes wrong.
+==================================================
+23.	ADMIN WORKFLOW 
+Normal daily admin workflow:
+1.	Login with 2FA 
+2.	Check dashboard alerts 
+3.	Review new users 
+4.	Handle pending reports 
+5.	Answer support tickets 
+6.	Check failed payments 
+7.	Review system errors 
+8.	Export reports if needed 
+9.	Review audit logs 
+10.	Logout securely 
+==================================================
+24.	RECOMMENDED TECH STACK 
+Frontend:
+React
+Next.js
+Tailwind CSS
+ShadCN UI
+Backend:
+Node.js with NestJS
+or Django
+or Laravel
+or FastAPI
+Database:
+PostgreSQL
+Authentication:
+JWT
+Session cookies
+2FA
+Payments:
+Stripe
+Storage:
+AWS S3
+Cloudflare R2
+Email:
+SendGrid
+Resend
+Mailgun
+Monitoring:
+Sentry
+Grafana
+Prometheus
+Hosting:
+AWS
+DigitalOcean
+Render
+Railway
+Vercel
+==================================================
+25.	FINAL ADMIN ARCHITECTURE SUMMARY 
+The admin system should have:
+Secure admin login
+Role-based permissions
+Main dashboard
+User management
+Admin management
+Content management
+Reports and moderation
+Payments and subscriptions
+Support tickets
+System settings
+Analytics
+Audit logs
+Notifications
+Security controls
+Database backup
+System health monitoring
+Main goal:
+The admin panel should let you control the whole app safely, without touching the database directly.

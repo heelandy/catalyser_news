@@ -8,6 +8,11 @@ const DATA_PATHS = {
   newsSummary: "../macro_news_feed_summary.json",
 };
 
+const API_PATHS = {
+  emailStatus: "../api/email-status",
+  testEmail: "../api/test-email",
+};
+
 const DISPLAY_TIME_ZONE = "America/New_York";
 const DISPLAY_TIME_ZONE_LABEL = "ET";
 const TIME_FORMATTER = new Intl.DateTimeFormat("en-US", {
@@ -53,6 +58,13 @@ const els = {
   staleBanner: document.querySelector("#staleBanner"),
   alertPopupLayer: document.querySelector("#alertPopupLayer"),
   reloadBtn: document.querySelector("#reloadBtn"),
+  emailBtn: document.querySelector("#emailBtn"),
+  emailDialog: document.querySelector("#emailDialog"),
+  emailConfigSummary: document.querySelector("#emailConfigSummary"),
+  emailRecipient: document.querySelector("#emailRecipient"),
+  emailConfigGrid: document.querySelector("#emailConfigGrid"),
+  emailTestResult: document.querySelector("#emailTestResult"),
+  sendTestEmailBtn: document.querySelector("#sendTestEmailBtn"),
   metrics: document.querySelector("#metrics"),
   componentRanges: document.querySelector("#componentRanges"),
   alertPanel: document.querySelector("#alertPanel"),
@@ -1283,6 +1295,94 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+function setEmailResult(message, type = "") {
+  els.emailTestResult.hidden = !message;
+  els.emailTestResult.className = `email-test-result ${type}`.trim();
+  els.emailTestResult.textContent = message;
+}
+
+function renderEmailConfig(status) {
+  const rows = [
+    ["Recipient", status.recipient || "Not set"],
+    ["Sender", status.sender || "Not set"],
+    ["SMTP", status.smtp_host ? `${status.smtp_host}:${status.smtp_port}` : "Not set"],
+    ["Password", status.password_present ? `Stored in ${status.password_env}` : "Not stored"],
+    ["Automatic", status.automatic_enabled ? "Enabled" : "Disabled"],
+    ["Alert filter", status.min_severity || "info"],
+  ];
+  els.emailConfigGrid.innerHTML = rows
+    .map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`)
+    .join("");
+}
+
+async function loadEmailStatus() {
+  els.emailConfigSummary.textContent = "Checking configuration";
+  els.sendTestEmailBtn.disabled = true;
+  setEmailResult("");
+  try {
+    const response = await fetch(`${API_PATHS.emailStatus}?v=${Date.now()}`, { cache: "no-store" });
+    if (!response.ok) {
+      throw new Error(`Email status returned ${response.status}`);
+    }
+    const status = await response.json();
+    if (status.recipient && !els.emailRecipient.value) {
+      els.emailRecipient.value = status.recipient;
+    }
+    renderEmailConfig(status);
+    els.emailConfigSummary.textContent = status.configured && status.mirrors_dashboard_alerts
+      ? "Automatic popup-to-email delivery is enabled."
+      : status.configured
+        ? "SMTP works, but automatic delivery is not fully enabled."
+        : "Email is not configured yet.";
+    els.sendTestEmailBtn.disabled = !status.configured;
+    if (!status.configured) {
+      setEmailResult("Run tools\\setup_email_alert.ps1, then restart the dashboard.", "error");
+    } else if (!status.mirrors_dashboard_alerts) {
+      setEmailResult("Add email to notification targets and set min_severity to info to mirror every dashboard popup.", "error");
+    }
+  } catch (error) {
+    els.emailConfigSummary.textContent = "Local email API is unavailable.";
+    els.emailConfigGrid.innerHTML = "";
+    setEmailResult("Restart the dashboard with START.bat so the local API server is active.", "error");
+  }
+}
+
+async function openEmailDialog() {
+  if (typeof els.emailDialog.showModal === "function") {
+    els.emailDialog.showModal();
+  } else {
+    els.emailDialog.setAttribute("open", "");
+  }
+  await loadEmailStatus();
+}
+
+async function sendTestEmail() {
+  const recipient = els.emailRecipient.value.trim();
+  if (!els.emailRecipient.checkValidity()) {
+    els.emailRecipient.reportValidity();
+    return;
+  }
+  els.sendTestEmailBtn.disabled = true;
+  els.sendTestEmailBtn.textContent = "Sending";
+  setEmailResult(`Sending test email to ${recipient}...`);
+  try {
+    const response = await fetch(API_PATHS.testEmail, {
+      method: "POST",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ recipient }),
+    });
+    const result = await response.json().catch(() => ({}));
+    const message = result.message || result.error || `Email test returned ${response.status}.`;
+    setEmailResult(message, response.ok && result.ok ? "success" : "error");
+  } catch (error) {
+    setEmailResult(`Email test failed: ${error.message}`, "error");
+  } finally {
+    els.sendTestEmailBtn.disabled = false;
+    els.sendTestEmailBtn.textContent = "Send Test";
+  }
+}
+
 async function loadAll() {
   els.dataStamp.textContent = "Loading data";
   try {
@@ -1322,6 +1422,8 @@ function setActiveTab(tab) {
 
 function bindEvents() {
   els.reloadBtn.addEventListener("click", loadAll);
+  els.emailBtn.addEventListener("click", openEmailDialog);
+  els.sendTestEmailBtn.addEventListener("click", sendTestEmail);
 
   els.alertPanel.addEventListener("click", (event) => {
     const item = event.target.closest("[data-alert-index]");

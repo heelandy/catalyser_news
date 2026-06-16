@@ -60,6 +60,22 @@ class DashboardContractTests(unittest.TestCase):
         self.assertRegex(html, r"styles\.css\?v=[0-9a-f]{12}")
         self.assertRegex(html, r"app\.js\?v=[0-9a-f]{12}")
 
+    def test_dashboard_email_test_contract(self):
+        html = (ROOT / "dashboard" / "index.html").read_text(encoding="utf-8")
+        app = (ROOT / "dashboard" / "app.js").read_text(encoding="utf-8")
+        styles = (ROOT / "dashboard" / "styles.css").read_text(encoding="utf-8")
+
+        self.assertIn('id="emailBtn"', html)
+        self.assertIn('id="emailDialog"', html)
+        self.assertIn('id="sendTestEmailBtn"', html)
+        self.assertIn("../api/email-status", app)
+        self.assertIn("../api/test-email", app)
+        self.assertIn("openEmailDialog", app)
+        self.assertIn("sendTestEmail", app)
+        self.assertIn("Automatic popup-to-email delivery is enabled", app)
+        self.assertIn(".settings-dialog", styles)
+        self.assertIn(".email-test-result.success", styles)
+
 
 if __name__ == "__main__":
     unittest.main()

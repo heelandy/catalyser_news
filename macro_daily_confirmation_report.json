@@ -1,24 +1,24 @@
 {
-  "avg_abs_probability_adjustment": 0.001618761923743308,
+  "avg_abs_probability_adjustment": 0.001316240188586601,
   "changed_direction_rows": 0,
   "daily_profiles": "studies/macro_reaction_profiles_investing_daily.csv",
   "match_counts": {
-    "daily_leans": 8,
-    "neutral": 2,
+    "daily_leans": 5,
+    "neutral": 1,
+    "no_profile": 1,
     "with_signal": 1
   },
-  "max_abs_probability_adjustment": 0.0030723316599367,
+  "max_abs_probability_adjustment": 0.0030399923605806123,
   "note": "Daily confirmation is a separate baseline layer. It does not replace 1m/5m release-reaction modeling.",
   "output": "macro_live_signal_current.csv",
   "regime_conflict_counts": {
-    "none": 11
+    "none": 8
   },
-  "rows": 11,
+  "rows": 8,
   "signals": "macro_live_signal_adjusted.csv",
   "source_label": "investing_daily_clean",
   "trade_state_counts": {
-    "bullish_candidate_after_confirmation": 1,
-    "wait_for_actual": 5,
-    "watch_only": 5
+    "long_only_after_confirmation": 1,
+    "wait_for_bullish_confirmation": 7
   }
 }

@@ -1,6 +1,6 @@
 {
   "targets": "risk_lock,popup",
-  "min_severity": "medium",
+  "min_severity": "info",
   "risk_lock": {
     "output": "macro_alert_risk_lock.json",
     "severity": "medium"

@@ -74,8 +74,18 @@ trail_atr   = input.float(2.0, "Trail x ATR (chandelier)", group="Risk plan", st
 tp1_rr      = input.float(1.0, "TP1 R (scale mode)", group="Risk plan", step=0.25)
 tp2_rr      = input.float(4.0, "TP2 R (scale mode)", group="Risk plan", step=0.25)
 show_plan   = input.bool(true, "Show stop / target lines", group="Display")
+show_gated  = input.bool(true, "Show entry levels while the gate is BLOCKED (dimmed)", group="Display",
+              tooltip="The bright yellow entry line only shows when a touch would FIRE (trend + regime gates clear). This adds a dim gray line at the same level while a gate blocks it — so you always see where the trigger sits; the dashboard says why it's blocked.")
 show_line_labels = input.bool(true, "Write ENTRY / STOP / TP on the chart", group="Display")
 show_dash = input.bool(true, "Show dashboard", group="Display")
+// ───────────────────────── PROP EVAL (signal-sim guardrails — display layer only) ─────────────────────────
+eval_on    = input.bool(false, "EVAL: prop guardrails", group="Prop Eval",
+             tooltip="Tracks this indicator's SIGNAL PnL (R x risk $, stop-price fills, no costs/slippage) against the funded rules and STOPS SIGNALLING when one trips: entry lines pulled, fire alerts suppressed, dashboard shows the reason. Display layer only — nothing here acts on real fills; your prop firm / broker limits remain the real enforcer.")
+eval_risk  = input.float(300.0, "EVAL: risk $ per trade (1R)", group="Prop Eval", step=25, minval=1)
+eval_target= input.float(3000.0, "EVAL: profit target $ (0 = off)", group="Prop Eval", step=100, minval=0)
+daily_loss = input.float(700.0, "EVAL: daily loss limit $", group="Prop Eval", step=50, minval=50)
+trail_dd   = input.float(1500.0, "EVAL: trailing max loss $", group="Prop Eval", step=100, minval=100)
+eval_buf   = input.float(200.0, "EVAL: halt buffer $ (halt early)", group="Prop Eval", step=50, minval=0)
 
 // ───────────────────────── CORE ─────────────────────────
 atr14 = ta.atr(14)
@@ -232,10 +242,23 @@ float extS = na(Se) ? na : (vwap_c - Se) / atr14
 bool cap_long_ok  = not cap_on or na(extL) or extL <= cap_k
 bool cap_short_ok = not cap_on or na(extS) or extS <= cap_k
 
+// ───────────────────────── EVAL STATE (signal-sim ledger; a tripped rule gates NEW signals from the next bar) ─────────────────────────
+var float ev_eq = 0.0       // cumulative signal PnL $ (R x eval_risk)
+var float ev_day0 = 0.0
+var float ev_peak = 0.0
+if new_day
+    ev_day0 := ev_eq
+// the buffer may never swallow a limit: a halt line at 0 would suspend signals at flat PnL
+float ev_buf = math.min(eval_buf, 0.5 * math.min(daily_loss, trail_dd))
+bool ev_day_halt = eval_on and (ev_eq - ev_day0) <= -(daily_loss - ev_buf)
+bool ev_dd_halt  = eval_on and ev_eq <= ev_peak - (trail_dd - ev_buf)
+bool ev_passed   = eval_on and eval_target > 0 and ev_eq >= eval_target
+bool ev_halt     = ev_day_halt or ev_dd_halt or ev_passed
+
 // ───────────────────────── GATES + FIRING ─────────────────────────
 // auto guard: 18:00-19:00 ET (trade-day start, pre-Asia-OR) still carries yesterday's RTH levels — no signals there
 bool stale_gap = is_auto and o_now < 60
-bool window = or_set and wkday and o_now < trade_end and not na(Le) and not stale_gap
+bool window = or_set and wkday and o_now < trade_end and not na(Le) and not stale_gap and not ev_halt
 bool gate_long  = long_on  and eff_up   and macro_allow and macro_long_ok  and local_ok
 bool gate_short = short_on and eff_down  and macro_allow and macro_short_ok and local_ok
 if allow_reentry and traded_l and not na(or_high) and close < or_high and n_l < max_entries
@@ -261,21 +284,57 @@ var float lstop = na          // long working stop (initial -> trails / -> BE)
 var float sstop = na
 var bool  l_tp1 = false
 var bool  s_tp1 = false
+var float l_ep = na           // eval sim: frozen entry + initial 1R risk
+var float l_rk = na
+var float s_ep = na
+var float s_rk = na
+var bool l_t1h = false        // TP1/TP2 touched + per-side state (dashboard, user color legend)
+var bool l_t2h = false
+var bool s_t1h = false
+var bool s_t2h = false
+var string stL = "WAIT"
+var string stS = "WAIT"
+// in-trade state text, shared by both sides (NEAR TP1 = 75% of the way to TP1)
+f_tstate(t2h, t1h, near_tp1) => t2h ? "TP2 HIT" : t1h ? "TP1 HIT" : near_tp1 ? "NEAR TP1" : "FILLED"
+float ev_r = 0.0              // R closed THIS bar (eval signal-sim)
+// signal-sim R for a close at px (scale mode: 50% banked at TP1, runner from BE)
+f_lr(px) => is_trail ? (px - l_ep) / l_rk : l_tp1 ? 0.5 * tp1_rr + 0.5 * (px - l_ep) / l_rk : (px - l_ep) / l_rk
+f_sr(px) => is_trail ? (s_ep - px) / s_rk : s_tp1 ? 0.5 * tp1_rr + 0.5 * (s_ep - px) / s_rk : (s_ep - px) / s_rk
 if reset_now
+    if in_long
+        ev_r += f_lr(close)                                            // day-boundary close of a displayed trade
+    if in_short
+        ev_r += f_sr(close)
     in_long := false
     in_short := false
     lstop := na
     sstop := na
     l_tp1 := false
     s_tp1 := false
+    l_t1h := false
+    l_t2h := false
+    s_t1h := false
+    s_t2h := false
+    stL := "WAIT"
+    stS := "WAIT"
 if long_fire
     in_long := true
     lstop := Ls
     l_tp1 := false
+    l_ep := Le
+    l_rk := Le - Ls
+    l_t1h := false
+    l_t2h := false
+    stL := "FILLED"
 if short_fire
     in_short := true
     sstop := Ss
     s_tp1 := false
+    s_ep := Se
+    s_rk := Ss - Se
+    s_t1h := false
+    s_t2h := false
+    stS := "FILLED"
 if in_long
     if is_trail
         lstop := math.max(lstop, close - trail_atr * atr14)            // chandelier ratchet
@@ -283,8 +342,16 @@ if in_long
         if not l_tp1 and high >= Lt1
             l_tp1 := true
             lstop := Le                                                // stop to break-even after TP1
+    if high >= Lt1
+        l_t1h := true
+    if high >= Lt2
+        l_t2h := true
+    stL := f_tstate(l_t2h, l_t1h, close >= Le + 0.75 * (Lt1 - Le))
     if low <= lstop or (not is_trail and high >= Lt2)
+        ev_r += f_lr(low <= lstop ? lstop : Lt2)
         in_long := false
+        if not l_t1h
+            stL := "STOP HIT"
 if in_short
     if is_trail
         sstop := math.min(sstop, close + trail_atr * atr14)
@@ -292,21 +359,50 @@ if in_short
         if not s_tp1 and low <= St1
             s_tp1 := true
             sstop := Se
+    if low <= St1
+        s_t1h := true
+    if low <= St2
+        s_t2h := true
+    stS := f_tstate(s_t2h, s_t1h, close <= Se - 0.75 * (Se - St1))
     if high >= sstop or (not is_trail and low <= St2)
+        ev_r += f_sr(high >= sstop ? sstop : St2)
         in_short := false
+        if not s_t1h
+            stS := "STOP HIT"
 if is_auto and o_now >= trade_end                              // auto: flatten the displayed trade at the session cutoff
+    if in_long
+        ev_r += f_lr(close)
+    if in_short
+        ev_r += f_sr(close)
     in_long := false
     in_short := false
+// eval ledger update (halt flags evaluate pre-bar -> a trip gates signals from the NEXT bar)
+ev_eq += ev_r * eval_risk
+ev_peak := math.max(ev_peak, ev_eq)
 bool l_live = (window and not traded_l and gate_long) or in_long
 bool s_live = (window and not traded_s and gate_short) or in_short
 float l_stop_now = in_long ? lstop : Ls                                // the stop to SHOW (planned while armed, working once live)
 float s_stop_now = in_short ? sstop : Ss
+// flat-side state refresh (final states persist for the session once the side has traded)
+bool armL = window and not traded_l and gate_long and cap_long_ok
+bool armS = window and not traded_s and gate_short and cap_short_ok
+if not in_long and not traded_l
+    stL := armL ? "ARMED" : "WAIT"
+if not in_short and not traded_s
+    stS := armS ? "ARMED" : "WAIT"
+// state colors (user legend): WAIT gray · ARMED yellow · FILLED blue · NEAR TP1 light green · TP1 HIT green · TP2 HIT dark green · STOP HIT red
+f_stc(s) => s == "WAIT" ? color.gray : s == "ARMED" ? color.yellow : s == "FILLED" ? color.rgb(41, 121, 255) :
+     s == "NEAR TP1" ? color.rgb(144, 238, 144) : s == "TP1 HIT" ? color.green : s == "TP2 HIT" ? color.rgb(0, 102, 0) : color.red
+f_grade(trendok, gateok, capok) => not trendok ? "—" : gateok and capok and regime == "A" ? "A+" : gateok and capok ? "A" : gateok ? "B" : "C"
 
 // ───────────────────────── PLOTS ─────────────────────────
 plot(or_set ? or_high : na, "OR high", color=color.new(color.aqua, 55),   style=plot.style_linebr)
 plot(or_set ? or_low  : na, "OR low",  color=color.new(color.orange, 55), style=plot.style_linebr)
 plot(l_live ? Le : na, "Long entry",  color=color.new(color.yellow, 0), style=plot.style_linebr, linewidth=2)
 plot(s_live ? Se : na, "Short entry", color=color.new(color.yellow, 0), style=plot.style_linebr, linewidth=2)
+// dimmed entry levels while a gate BLOCKS the side (would NOT fire on a touch — see dashboard "Gated"/"Trend gate")
+plot(show_gated and window and not traded_l and not l_live ? Le : na, "Long entry (gated)",  color=color.new(color.gray, 45), style=plot.style_linebr)
+plot(show_gated and window and not traded_s and not s_live ? Se : na, "Short entry (gated)", color=color.new(color.gray, 45), style=plot.style_linebr)
 bool lp = show_plan and l_live
 bool sp = show_plan and s_live
 plot(lp ? l_stop_now : na, "Long stop",  color=color.new(color.red, 15), style=plot.style_linebr, linewidth=2)
@@ -321,8 +417,11 @@ plotshape(long_skip,  "Long capped",  shape.xcross, location.belowbar, color.new
 plotshape(short_skip, "Short capped", shape.xcross, location.abovebar, color.new(color.gray, 0), text="EXT", textcolor=color.gray, size=size.tiny)
 bgcolor(macro_en and regime == "D" ? color.new(color.red, 90) : na)
 bgcolor(block_range and local_regime == 2 ? color.new(color.gray, 92) : na)
+bgcolor(ev_halt and not ev_passed ? color.new(color.red, 82) : na)
+bgcolor(ev_passed ? color.new(color.green, 88) : na)
 alertcondition(long_fire,  "STACK Long",  "HIGHSTRIKE STACK: LONG breakout (gated + near-VWAP)")
 alertcondition(short_fire, "STACK Short", "HIGHSTRIKE STACK: SHORT breakout (gated + near-VWAP)")
+alertcondition(ev_halt and not ev_halt[1], "STACK Eval halt/target", "HIGHSTRIKE STACK: EVAL rule tripped (daily / trailing / target) — signals suspended, check the dashboard")
 
 // ───────────────────────── FLOATING ENTRY / STOP / TP LABELS ─────────────────────────
 f_setlbl(lbl, cond, price, txt, col) =>
@@ -359,47 +458,65 @@ if barstate.islast and show_line_labels
     lbl_St1 := f_setlbl(lbl_St1, sp and not is_trail, St1, "TP1 " + str.tostring(St1, format.mintick) + "  +" + r1 + "R", color.new(color.teal, 0))
     lbl_St2 := f_setlbl(lbl_St2, sp and not is_trail, St2, "TP2 " + str.tostring(St2, format.mintick) + "  +" + r2 + "R", color.new(color.green, 0))
 
-// ───────────────────────── DASHBOARD (MTF style, with ENTRY + STOP) ─────────────────────────
-f_q(x)  => na(x) ? "—" : x <= cap_k ? "NEAR ✓" : "EXT ⚠"
+// ───────────────────────── DASHBOARD (LONG | SHORT trade plan · state colors: WAIT gray / ARMED yellow / FILLED blue / NEAR TP1 lt-green / TP1 green / TP2 dk-green / STOP red) ─────────────────────────
+f_v(p) => na(p) ? "—" : str.tostring(p, format.mintick)
+f_q(x)  => na(x) ? "—" : (x <= cap_k ? "NEAR " : "EXT ⚠ ") + str.tostring(x, "#.#") + "x"
 f_qc(x) => na(x) ? color.gray : x <= cap_k ? color.lime : color.orange
-f_st(s) => s == 1 ? "UP (HH+HL)" : s == 2 ? "DOWN (LL+LH)" : s == 3 ? "RANGE" : "—"
-var table dash = table.new(position.top_right, 2, 13, bgcolor=color.new(color.black, 70), frame_color=color.gray, frame_width=1)
+var table dash = table.new(position.top_right, 3, 13, bgcolor=color.new(color.black, 70), frame_color=color.gray, frame_width=1)
 if barstate.islast and show_dash
-    int dirn = l_live ? 1 : s_live ? -1 : 0
-    float e_ = dirn == 1 ? Le : dirn == -1 ? Se : na
-    float st_ = dirn == 1 ? l_stop_now : dirn == -1 ? s_stop_now : na
-    float x_ = dirn == 1 ? extL : dirn == -1 ? extS : na
-    bool   filled = in_long or in_short
-    bool   armed  = (l_live or s_live) and not filled
-    string stat   = filled ? "FILLED ✓" : armed ? "ARMED ◷" : "flat —"
-    color  statc  = filled ? color.lime : armed ? color.aqua : color.gray
-    string greason = not macro_allow ? ("BLOCK " + regime) : not local_ok ? "RANGE (flat)" : (dirn == 1 and not macro_long_ok) ? "SPY↓ vs long" : (dirn == -1 and not macro_short_ok) ? "SPY↑ vs short" : "clear ✓"
-    color  gcol    = greason == "clear ✓" ? color.lime : color.orange
     string sess_lbl = is_auto ? ("Auto: " + (phase_rth ? "RTH" : phase_london ? "London" : "Asia")) : sess_preset == "US RTH (0930-1000 ET)" ? "RTH" : sess_preset == "Asia / Tokyo (1900-2000 ET)" ? "Asia" : "Custom"
-    string tgt = is_trail ? ("trail " + str.tostring(trail_atr, "#.#") + "ATR (ride)") : (dirn == 1 ? str.tostring(Lt2, "#.#") : dirn == -1 ? str.tostring(St2, "#.#") : "—")
-    table.cell(dash,0,0,"HIGHSTRIKE STACK", text_color=color.yellow, text_size=size.small)
-    table.cell(dash,1,0, str.tostring(syminfo.ticker)+"  "+timeframe.period, text_color=color.silver, text_size=size.small)
-    table.cell(dash,0,1,"Session", text_color=color.silver, text_size=size.tiny)
-    table.cell(dash,1,1, sess_lbl + "  " + or_start + " ET", text_color=color.aqua, text_size=size.tiny)
-    table.cell(dash,0,2,"Regime", text_color=color.silver, text_size=size.tiny)
-    table.cell(dash,1,2, regime+(spy_up?" SPY↑":spy_dn?" SPY↓":""), text_color=regime=="A"?color.lime:regime=="D"?color.red:color.aqua, text_size=size.tiny)
-    table.cell(dash,0,3,"Trend gate", text_color=color.silver, text_size=size.tiny)
-    table.cell(dash,1,3, (use_struct?"STRUCT: "+f_st(st_state):"EMA: "+(trend_up?"UP":trend_down?"DOWN":"flat")), text_color=(eff_up?color.lime:eff_down?color.red:color.gray), text_size=size.tiny)
-    table.cell(dash,0,4,"Setup", text_color=color.silver, text_size=size.tiny)
-    table.cell(dash,1,4, dirn==1?"LONG":dirn==-1?"SHORT":"—", text_color=dirn==1?color.lime:dirn==-1?color.red:color.gray, text_size=size.tiny)
-    table.cell(dash,0,5,"Status", text_color=color.silver, text_size=size.tiny)
-    table.cell(dash,1,5, stat + (allow_reentry ? ("  (" + str.tostring(dirn==1?n_l:dirn==-1?n_s:0) + "/" + str.tostring(max_entries) + ")") : ""), text_color=statc, text_size=size.tiny)
-    table.cell(dash,0,6,"Entry", text_color=color.silver, text_size=size.tiny)
-    table.cell(dash,1,6, na(e_)?"—":str.tostring(e_, format.mintick), text_color=color.yellow, text_size=size.tiny)
-    table.cell(dash,0,7,"Stop loss", text_color=color.silver, text_size=size.tiny)
-    table.cell(dash,1,7, na(st_)?"—":str.tostring(st_, format.mintick)+(filled and is_trail?"  (trail)":""), text_color=color.red, text_size=size.tiny)
-    table.cell(dash,0,8,"Target", text_color=color.silver, text_size=size.tiny)
-    table.cell(dash,1,8, tgt, text_color=color.teal, text_size=size.tiny)
-    table.cell(dash,0,9,"Gated", text_color=color.silver, text_size=size.tiny)
-    table.cell(dash,1,9, greason, text_color=gcol, text_size=size.tiny)
-    table.cell(dash,0,10,"VWAP cap", text_color=color.silver, text_size=size.tiny)
-    table.cell(dash,1,10, f_q(x_)+(na(x_)?"":"  "+str.tostring(x_,"#.#")+"x  k="+str.tostring(cap_k,"#.#")), text_color=f_qc(x_), text_size=size.tiny)
-    table.cell(dash,0,11,"OR / VWAP", text_color=color.silver, text_size=size.tiny)
-    table.cell(dash,1,11, (or_set?(str.tostring(or_low,"#.#")+" / "+str.tostring(or_high,"#.#")):"forming")+"  ·  "+str.tostring(vwap_c,"#.#"), text_color=color.aqua, text_size=size.tiny)
-    table.cell(dash,0,12,"NEAR/EXT", text_color=color.gray, text_size=size.tiny)
-    table.cell(dash,1,12, "= dist from VWAP (xATR)", text_color=color.gray, text_size=size.tiny)
+    string regL = eff_up ? (local_regime == 3 ? "Bullish Expansion" : "Bullish Trend") : st_state == 3 ? "Range" : eff_down ? "Bearish (no long)" : "No Structure"
+    string regS = eff_down ? (local_regime == 3 ? "Bearish Expansion" : "Bearish Trend") : st_state == 3 ? "Range" : eff_up ? "Bullish (no short)" : "No Structure"
+    string grL = f_grade(eff_up, gate_long, cap_long_ok)
+    string grS = f_grade(eff_down, gate_short, cap_short_ok)
+    string etagL = in_long ? "FILLED" : traded_l ? "DONE" : armL ? "ARMED" : "WAIT"
+    string etagS = in_short ? "FILLED" : traded_s ? "DONE" : armS ? "ARMED" : "WAIT"
+    color etcL = etagL == "FILLED" ? color.rgb(41, 121, 255) : etagL == "ARMED" ? color.yellow : color.gray
+    color etcS = etagS == "FILLED" ? color.rgb(41, 121, 255) : etagS == "ARMED" ? color.yellow : color.gray
+    string stop_tag = stop_mode == "Structure swing (HH/HL)" ? " [STRUCT]" : " [OR]"
+    string rr_txt = is_trail ? "1R stop · trail " + str.tostring(trail_atr, "#.#") + "ATR" : "1 : " + str.tostring(tp2_rr, "#.#")
+    string greason = not macro_allow ? ("BLOCK " + regime) : not local_ok ? "RANGE block" : "clear ✓"
+    table.cell(dash,0,0,"STACK " + syminfo.ticker + " " + timeframe.period, text_color=color.yellow, text_size=size.small)
+    table.cell(dash,1,0,"LONG",  text_color=color.lime, text_size=size.small)
+    table.cell(dash,2,0,"SHORT", text_color=color.red,  text_size=size.small)
+    table.cell(dash,0,1,"REGIME", text_color=color.silver, text_size=size.tiny)
+    table.cell(dash,1,1, regL, text_color=eff_up ? color.lime : color.gray, text_size=size.tiny)
+    table.cell(dash,2,1, regS, text_color=eff_down ? color.red : color.gray, text_size=size.tiny)
+    table.cell(dash,0,2,"GRADE", text_color=color.silver, text_size=size.tiny)
+    table.cell(dash,1,2, grL, text_color=grL == "A+" or grL == "A" ? color.lime : grL == "B" ? color.orange : color.gray, text_size=size.tiny)
+    table.cell(dash,2,2, grS, text_color=grS == "A+" or grS == "A" ? color.lime : grS == "B" ? color.orange : color.gray, text_size=size.tiny)
+    table.cell(dash,0,3,"ENTRY", text_color=color.silver, text_size=size.tiny)
+    table.cell(dash,1,3, f_v(Le) + " [" + etagL + "]", text_color=etcL, text_size=size.tiny)
+    table.cell(dash,2,3, f_v(Se) + " [" + etagS + "]", text_color=etcS, text_size=size.tiny)
+    table.cell(dash,0,4,"STOP", text_color=color.silver, text_size=size.tiny)
+    table.cell(dash,1,4, f_v(l_stop_now) + stop_tag + (in_long and is_trail ? " trail" : ""), text_color=stL == "STOP HIT" ? color.red : color.new(color.red, 25), text_size=size.tiny)
+    table.cell(dash,2,4, f_v(s_stop_now) + stop_tag + (in_short and is_trail ? " trail" : ""), text_color=stS == "STOP HIT" ? color.red : color.new(color.red, 25), text_size=size.tiny)
+    table.cell(dash,0,5,"TP1", text_color=color.silver, text_size=size.tiny)
+    table.cell(dash,1,5, f_v(Lt1) + (l_t1h ? " [HIT]" : " [PENDING]"), text_color=l_t1h ? color.green : color.gray, text_size=size.tiny)
+    table.cell(dash,2,5, f_v(St1) + (s_t1h ? " [HIT]" : " [PENDING]"), text_color=s_t1h ? color.green : color.gray, text_size=size.tiny)
+    table.cell(dash,0,6,"TP2", text_color=color.silver, text_size=size.tiny)
+    table.cell(dash,1,6, f_v(Lt2) + (l_t2h ? " [HIT]" : " [PENDING]"), text_color=l_t2h ? color.rgb(0, 102, 0) : color.gray, text_size=size.tiny)
+    table.cell(dash,2,6, f_v(St2) + (s_t2h ? " [HIT]" : " [PENDING]"), text_color=s_t2h ? color.rgb(0, 102, 0) : color.gray, text_size=size.tiny)
+    table.cell(dash,0,7,"R:R", text_color=color.silver, text_size=size.tiny)
+    table.cell(dash,1,7, rr_txt, text_color=color.silver, text_size=size.tiny)
+    table.cell(dash,2,7, rr_txt, text_color=color.silver, text_size=size.tiny)
+    table.cell(dash,0,8,"STATE", text_color=color.silver, text_size=size.tiny)
+    table.cell(dash,1,8, stL, text_color=f_stc(stL), text_size=size.tiny)
+    table.cell(dash,2,8, stS, text_color=f_stc(stS), text_size=size.tiny)
+    table.cell(dash,0,9,"Session", text_color=color.silver, text_size=size.tiny)
+    table.cell(dash,1,9, sess_lbl + "  " + or_start + " ET", text_color=color.aqua, text_size=size.tiny)
+    table.cell(dash,2,9, or_set ? "OR " + str.tostring(or_low, "#.#") + " / " + str.tostring(or_high, "#.#") : "OR forming…", text_color=color.aqua, text_size=size.tiny)
+    table.cell(dash,0,10,"Macro", text_color=color.silver, text_size=size.tiny)
+    table.cell(dash,1,10, regime + (spy_up ? " SPY↑" : spy_dn ? " SPY↓" : ""), text_color=regime == "A" ? color.lime : regime == "D" ? color.red : color.aqua, text_size=size.tiny)
+    table.cell(dash,2,10, greason, text_color=greason == "clear ✓" ? color.lime : color.orange, text_size=size.tiny)
+    table.cell(dash,0,11,"VWAP cap", text_color=color.silver, text_size=size.tiny)
+    table.cell(dash,1,11, f_q(extL), text_color=f_qc(extL), text_size=size.tiny)
+    table.cell(dash,2,11, f_q(extS), text_color=f_qc(extS), text_size=size.tiny)
+    table.cell(dash,0,12,"Eval", text_color=color.silver, text_size=size.tiny)
+    string evtxt = not eval_on ? "off" : ev_passed ? "TARGET ✓  +" + str.tostring(ev_eq, "#") :
+         (ev_day_halt ? "DAY HALT " : ev_dd_halt ? "DD HALT " : "ok ") +
+         " day " + str.tostring(ev_eq - ev_day0, "#") + "/" + str.tostring(-daily_loss, "#") +
+         " · dd " + str.tostring(ev_eq - ev_peak, "#") + "/" + str.tostring(-trail_dd, "#") +
+         (eval_target > 0 ? " · tgt " + str.tostring(ev_eq, "#") + "/" + str.tostring(eval_target, "#") : "")
+    table.cell(dash,1,12, evtxt, text_color=not eval_on ? color.gray : ev_passed ? color.lime : ev_halt ? color.red : color.silver, text_size=size.tiny)
+    table.cell(dash,2,12, eval_on ? "1R $" + str.tostring(eval_risk, "#") : "", text_color=color.gray, text_size=size.tiny)

@@ -1,0 +1,4 @@
+[31m[auth][error][0m UntrustedHost: Host must be trusted. URL was: http://127.0.0.1:3002/api/auth/session. Read more at https://errors.authjs.dev#untrustedhost
+    at C:\Users\heela\OneDrive\Área de Trabalho\python nq Catalyst\web\.next\server\chunks\ssr\_0b1ny6z._.js:414:51445
+    at fF (C:\Users\heela\OneDrive\Área de Trabalho\python nq Catalyst\web\.next\server\chunks\ssr\_0b1ny6z._.js:414:54110)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)

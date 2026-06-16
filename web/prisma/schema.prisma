@@ -1,0 +1,570 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  FREE_USER
+  PAID_SUBSCRIBER
+  ADMIN
+}
+
+enum PlanStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum BillingInterval {
+  MONTHLY
+  QUARTERLY
+  ANNUAL
+}
+
+enum SubscriptionState {
+  INCOMPLETE
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  UNPAID
+  PAUSED
+  EXPIRED
+}
+
+enum PaymentStatus {
+  REQUIRES_PAYMENT_METHOD
+  REQUIRES_CONFIRMATION
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+  CANCELED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  OPEN
+  PAID
+  VOID
+  UNCOLLECTIBLE
+}
+
+enum AlertState {
+  DRAFT
+  PENDING
+  APPROVED
+  REJECTED
+  SENT
+  EXPIRED
+}
+
+enum AlertChannel {
+  EMAIL
+  TELEGRAM
+  DISCORD
+  WEBHOOK
+  POPUP
+  RISK_LOCK
+}
+
+enum MarketBias {
+  BULLISH
+  BEARISH
+  NEUTRAL
+  MIXED
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum DeliveryStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  FAILED
+  SKIPPED
+  DEAD_LETTER
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique @db.VarChar(320)
+  emailVerified DateTime?
+  name          String?   @db.VarChar(160)
+  image         String?   @db.Text
+  role          UserRole  @default(FREE_USER)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  accounts            Account[]
+  sessions            Session[]
+  subscriptions       Subscription[]
+  payments            Payment[]
+  invoices            Invoice[]
+  alertPreferences    AlertPreference[]
+  deliveryAttempts    AlertDeliveryAttempt[]
+  discordConnections  DiscordConnection[]
+  telegramConnections TelegramConnection[]
+  approvedAlerts      Alert[]                @relation("AlertApprovedBy")
+  rejectedAlerts      Alert[]                @relation("AlertRejectedBy")
+  adminActions        AdminAuditLog[]        @relation("AdminAuditActor")
+  adminTargets        AdminAuditLog[]        @relation("AdminAuditTarget")
+  securityAuditLogs   SecurityAuditLog[]
+
+  @@index([role])
+  @@index([createdAt])
+}
+
+model Account {
+  id                String   @id @default(cuid())
+  userId            String
+  type              String   @db.VarChar(64)
+  provider          String   @db.VarChar(64)
+  providerAccountId String   @db.VarChar(255)
+  refresh_token     String?  @db.Text
+  access_token      String?  @db.Text
+  expires_at        Int?
+  token_type        String?  @db.VarChar(64)
+  scope             String?  @db.Text
+  id_token          String?  @db.Text
+  session_state     String?  @db.Text
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique @db.VarChar(255)
+  userId       String
+  expires      DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expires])
+}
+
+model VerificationToken {
+  identifier String   @db.VarChar(320)
+  token      String   @unique @db.VarChar(255)
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model StripeWebhookEvent {
+  eventId      String    @id @db.VarChar(255)
+  eventType    String    @db.VarChar(160)
+  status       String    @default("processing") @db.VarChar(40)
+  errorMessage String?   @db.Text
+  processedAt  DateTime?
+  rawPayload   Json?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([eventType, createdAt])
+  @@index([status, createdAt])
+}
+
+model AuthRateLimit {
+  key             String    @id @db.VarChar(64)
+  attempts        Int       @default(0)
+  windowStartedAt DateTime
+  blockedUntil    DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([blockedUntil])
+}
+
+model Plan {
+  id                     String     @id @default(cuid())
+  code                   String     @unique @db.VarChar(64)
+  name                   String     @db.VarChar(120)
+  description            String?    @db.Text
+  status                 PlanStatus @default(ACTIVE)
+  currency               String     @default("usd") @db.VarChar(3)
+  monthlyPriceCents      Int        @default(0)
+  quarterlyPriceCents    Int?
+  annualPriceCents       Int?
+  dailyAlertLimit        Int?
+  priorityRank           Int        @default(0)
+  stripeProductId        String?    @unique @db.VarChar(255)
+  stripeMonthlyPriceId   String?    @unique @db.VarChar(255)
+  stripeQuarterlyPriceId String?    @unique @db.VarChar(255)
+  stripeAnnualPriceId    String?    @unique @db.VarChar(255)
+  features               Json?
+  createdAt              DateTime   @default(now())
+  updatedAt              DateTime   @updatedAt
+
+  subscriptions    Subscription[]
+  coupons          Coupon[]
+  alertPreferences AlertPreference[]
+
+  @@index([status])
+  @@index([priorityRank])
+}
+
+model Subscription {
+  id                   String            @id @default(cuid())
+  userId               String
+  planId               String
+  state                SubscriptionState @default(INCOMPLETE)
+  billingInterval      BillingInterval   @default(MONTHLY)
+  stripeCustomerId     String?           @db.VarChar(255)
+  stripeSubscriptionId String?           @unique @db.VarChar(255)
+  stripePriceId        String?           @db.VarChar(255)
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  trialEndsAt          DateTime?
+  cancelAtPeriodEnd    Boolean           @default(false)
+  canceledAt           DateTime?
+  graceEndsAt          DateTime?
+  metadata             Json?
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan     Plan      @relation(fields: [planId], references: [id], onDelete: Restrict)
+  payments Payment[]
+  invoices Invoice[]
+
+  @@index([userId, state])
+  @@index([planId])
+  @@index([state, currentPeriodEnd])
+  @@index([stripeCustomerId])
+}
+
+model Payment {
+  id                    String        @id @default(cuid())
+  userId                String
+  subscriptionId        String?
+  invoiceId             String?
+  status                PaymentStatus
+  amountCents           Int
+  currency              String        @default("usd") @db.VarChar(3)
+  stripePaymentIntentId String?       @unique @db.VarChar(255)
+  stripeChargeId        String?       @unique @db.VarChar(255)
+  idempotencyKey        String?       @unique @db.VarChar(255)
+  rawEventId            String?       @unique @db.VarChar(255)
+  paidAt                DateTime?
+  failedAt              DateTime?
+  failureCode           String?       @db.VarChar(120)
+  failureMessage        String?       @db.Text
+  rawPayload            Json?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  invoice      Invoice?      @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([subscriptionId])
+  @@index([invoiceId])
+  @@index([status, createdAt])
+}
+
+model Invoice {
+  id              String        @id @default(cuid())
+  userId          String
+  subscriptionId  String?
+  status          InvoiceStatus
+  stripeInvoiceId String?       @unique @db.VarChar(255)
+  number          String?       @unique @db.VarChar(120)
+  idempotencyKey  String?       @unique @db.VarChar(255)
+  rawEventId      String?       @unique @db.VarChar(255)
+  currency        String        @default("usd") @db.VarChar(3)
+  subtotalCents   Int           @default(0)
+  totalCents      Int           @default(0)
+  amountDueCents  Int           @default(0)
+  amountPaidCents Int           @default(0)
+  hostedUrl       String?       @db.Text
+  pdfUrl          String?       @db.Text
+  periodStart     DateTime?
+  periodEnd       DateTime?
+  dueDate         DateTime?
+  paidAt          DateTime?
+  rawPayload      Json?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  payments     Payment[]
+
+  @@index([userId, status])
+  @@index([subscriptionId, status])
+  @@index([status, createdAt])
+}
+
+model Coupon {
+  id                    String    @id @default(cuid())
+  code                  String    @unique @db.VarChar(80)
+  stripeCouponId        String?   @unique @db.VarChar(255)
+  stripePromotionCodeId String?   @unique @db.VarChar(255)
+  appliesToPlanId       String?
+  percentOff            Int?
+  amountOffCents        Int?
+  currency              String?   @db.VarChar(3)
+  active                Boolean   @default(true)
+  validFrom             DateTime?
+  validUntil            DateTime?
+  maxRedemptions        Int?
+  redeemedCount         Int       @default(0)
+  metadata              Json?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  appliesToPlan Plan? @relation(fields: [appliesToPlanId], references: [id], onDelete: SetNull)
+
+  @@index([active, validUntil])
+  @@index([appliesToPlanId])
+}
+
+model AlertPreference {
+  id                String    @id @default(cuid())
+  userId            String
+  planId            String?
+  emailEnabled      Boolean   @default(true)
+  telegramEnabled   Boolean   @default(false)
+  discordEnabled    Boolean   @default(false)
+  webhookEnabled    Boolean   @default(false)
+  minimumConfidence Int       @default(60)
+  minimumRiskLevel  RiskLevel @default(LOW)
+  eventFamilies     Json?
+  symbols           Json?
+  quietHours        Json?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan Plan? @relation(fields: [planId], references: [id], onDelete: SetNull)
+
+  @@unique([userId])
+  @@index([planId])
+}
+
+model NewsEvent {
+  id            String    @id @default(cuid())
+  source        String    @db.VarChar(80)
+  sourceEventId String?   @db.VarChar(255)
+  publisher     String?   @db.VarChar(120)
+  symbol        String?   @db.VarChar(40)
+  eventFamily   String?   @db.VarChar(80)
+  headline      String    @db.Text
+  url           String?   @db.Text
+  summary       String?   @db.Text
+  occurredAt    DateTime?
+  fetchedAt     DateTime  @default(now())
+  rawPayload    Json?
+  createdAt     DateTime  @default(now())
+
+  reactions MarketReaction[]
+
+  @@unique([source, sourceEventId])
+  @@index([occurredAt])
+  @@index([source, fetchedAt])
+  @@index([eventFamily, occurredAt])
+}
+
+model MarketReaction {
+  id                 String     @id @default(cuid())
+  newsEventId        String?
+  eventFamily        String     @db.VarChar(80)
+  symbol             String     @default("NQ") @db.VarChar(40)
+  releaseTime        DateTime?
+  actualValue        String?    @db.VarChar(120)
+  forecastValue      String?    @db.VarChar(120)
+  previousValue      String?    @db.VarChar(120)
+  releaseRuleBias    MarketBias
+  liveRegimeBias     MarketBias
+  finalBias          MarketBias
+  bullishProbability Float?
+  confidence         Int
+  riskLevel          RiskLevel
+  tradeState         String     @db.VarChar(120)
+  expectedReaction   String     @db.Text
+  reasoning          String     @db.Text
+  riskWarning        String?    @db.Text
+  watchLevels        Json?
+  invalidation       String?    @db.Text
+  expiresAt          DateTime?
+  createdAt          DateTime   @default(now())
+
+  newsEvent NewsEvent? @relation(fields: [newsEventId], references: [id], onDelete: SetNull)
+  alert     Alert?
+
+  @@index([newsEventId])
+  @@index([eventFamily, releaseTime])
+  @@index([finalBias, riskLevel])
+  @@index([createdAt])
+}
+
+model Alert {
+  id                String     @id @default(cuid())
+  marketReactionId  String?    @unique
+  state             AlertState @default(DRAFT)
+  headline          String     @db.Text
+  summary           String     @db.Text
+  bias              MarketBias
+  expectedReaction  String     @db.Text
+  confidence        Int
+  riskLevel         RiskLevel
+  reasoning         String     @db.Text
+  riskWarning       String     @db.Text
+  watchLevels       Json?
+  invalidation      String?    @db.Text
+  disclaimer        String     @db.Text
+  sourceFingerprint String?    @unique @db.VarChar(255)
+  idempotencyKey    String?    @unique @db.VarChar(255)
+  approvedById      String?
+  rejectedById      String?
+  rejectionReason   String?    @db.Text
+  approvedAt        DateTime?
+  rejectedAt        DateTime?
+  sentAt            DateTime?
+  expiresAt         DateTime?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  marketReaction   MarketReaction?        @relation(fields: [marketReactionId], references: [id], onDelete: SetNull)
+  approvedBy       User?                  @relation("AlertApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  rejectedBy       User?                  @relation("AlertRejectedBy", fields: [rejectedById], references: [id], onDelete: SetNull)
+  deliveryAttempts AlertDeliveryAttempt[]
+
+  @@index([state, createdAt])
+  @@index([createdAt])
+  @@index([expiresAt])
+  @@index([bias, riskLevel])
+  @@index([approvedById])
+  @@index([rejectedById])
+}
+
+model AlertDeliveryAttempt {
+  id                String         @id @default(cuid())
+  alertId           String
+  userId            String
+  channel           AlertChannel
+  status            DeliveryStatus @default(QUEUED)
+  destinationHash   String?        @db.VarChar(255)
+  providerMessageId String?        @db.VarChar(255)
+  idempotencyKey    String?        @unique @db.VarChar(255)
+  attemptNumber     Int            @default(1)
+  nextRetryAt       DateTime?
+  deliveredAt       DateTime?
+  failedAt          DateTime?
+  failureCategory   String?        @db.VarChar(120)
+  failureMessage    String?        @db.Text
+  payloadDigest     String?        @db.VarChar(255)
+  rawPayload        Json?
+  /// Delivery-attempt logs are operational records and should expire by this timestamp.
+  retainUntil       DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  alert Alert @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([alertId, channel, status])
+  @@index([userId, createdAt])
+  @@index([status, nextRetryAt])
+  @@index([retainUntil])
+}
+
+model DiscordConnection {
+  id                    String    @id @default(cuid())
+  userId                String
+  discordUserId         String?   @unique @db.VarChar(120)
+  webhookId             String?   @unique @db.VarChar(255)
+  guildId               String?   @db.VarChar(120)
+  channelId             String?   @db.VarChar(120)
+  encryptedWebhookToken String?   @db.Text
+  verifiedAt            DateTime?
+  disabledAt            DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, channelId])
+  @@index([userId, disabledAt])
+}
+
+model TelegramConnection {
+  id                   String    @id @default(cuid())
+  userId               String
+  telegramUserId       String?   @unique @db.VarChar(120)
+  chatId               String?   @unique @db.VarChar(120)
+  verificationCodeHash String?   @db.Text
+  verifiedAt           DateTime?
+  disabledAt           DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, chatId])
+  @@index([userId, disabledAt])
+}
+
+model AdminAuditLog {
+  id           String    @id @default(cuid())
+  actorUserId  String?
+  targetUserId String?
+  action       String    @db.VarChar(120)
+  entityType   String    @db.VarChar(120)
+  entityId     String?   @db.VarChar(255)
+  reason       String?   @db.Text
+  ipAddress    String?   @db.VarChar(80)
+  userAgent    String?   @db.Text
+  metadata     Json?
+  /// Admin audit logs are retained for compliance review until this timestamp.
+  retainUntil  DateTime?
+  createdAt    DateTime  @default(now())
+
+  actorUser  User? @relation("AdminAuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  targetUser User? @relation("AdminAuditTarget", fields: [targetUserId], references: [id], onDelete: SetNull)
+
+  @@index([actorUserId, createdAt])
+  @@index([targetUserId, createdAt])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@index([retainUntil])
+}
+
+model SecurityAuditLog {
+  id          String    @id @default(cuid())
+  userId      String?
+  eventType   String    @db.VarChar(120)
+  severity    RiskLevel @default(LOW)
+  ipAddress   String?   @db.VarChar(80)
+  userAgent   String?   @db.Text
+  metadata    Json?
+  /// Security logs are retained until this timestamp, then exported or purged by policy.
+  retainUntil DateTime?
+  createdAt   DateTime  @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([eventType, createdAt])
+  @@index([severity, createdAt])
+  @@index([retainUntil])
+}

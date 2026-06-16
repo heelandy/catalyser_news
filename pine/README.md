@@ -19,20 +19,19 @@ parses HIGHSTRIKE alert text as bullish/bearish tape evidence, blending it
 with interpreted news and market tape before the trust and daily-confirmation
 stages. There are three ways to get alerts into that file:
 
-1. **Automatic (webhook listener).** Run the local listener and point
-   TradingView alert webhooks at it:
-
-   ```powershell
-   python .\tools\tape_signal_listener.py --port 8788
-   ```
-
-   TradingView webhooks need a public URL, so expose the port with a tunnel
-   (for example `cloudflared tunnel --url http://127.0.0.1:8788`) and paste
-   the tunnel URL into the TradingView alert's webhook field. The listener
-   infers bullish/bearish and the symbol from the alert text (LONG/SHORT/
-   CALL/PUT, NQ/QQQ/SPY) and writes `macro_tape_signals.json` in the format
-   the regime builder expects. Each alert stays valid for `--valid-minutes`
-   (default 180).
+1. **Automatic (webhook listener).** The listener starts automatically with
+   `START.bat` / `tools\start_live_pipeline.ps1` and waits on
+   `http://127.0.0.1:8788`. TradingView webhooks need a public URL, so
+   double-click `TUNNEL.bat` in the project root (uses the free Cloudflare
+   quick tunnel), wait for the `https://...trycloudflare.com` line, and paste
+   that URL into the TradingView alert's Webhook URL field. Keep the tunnel
+   window open while trading; the URL changes when the tunnel restarts.
+   The listener infers bullish/bearish and the symbol from the alert text
+   (LONG/SHORT/CALL/PUT, NQ/QQQ/SPY) and writes `macro_tape_signals.json` in
+   the format the regime builder expects. Each alert stays valid for
+   `--valid-minutes` (default 180). Note: TradingView's webhook field
+   requires a paid TradingView plan (Essential or higher); on the free plan
+   use option 2 or 3 below.
 
 2. **Manual post from this machine** (no tunnel needed):
 

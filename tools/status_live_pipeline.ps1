@@ -5,8 +5,9 @@ param(
 
 $root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 
-$runners = @(Get-CimInstance Win32_Process |
-    Where-Object { $_.Name -like "python*" -and $_.CommandLine -match "macro_pipeline_runner\.py" })
+$pyProcs = @(Get-CimInstance Win32_Process | Where-Object { $_.Name -like "python*" })
+
+$runners = @($pyProcs | Where-Object { $_.CommandLine -match "macro_pipeline_runner\.py" })
 if ($runners.Count -gt 0) {
     foreach ($proc in $runners) {
         Write-Output "Live runner RUNNING: PID $($proc.ProcessId)"
@@ -15,12 +16,21 @@ if ($runners.Count -gt 0) {
     Write-Output "Live runner NOT RUNNING."
 }
 
-$servers = @(Get-CimInstance Win32_Process |
-    Where-Object { $_.Name -like "python*" -and $_.CommandLine -match "http\.server $DashboardPort" })
+$servers = @($pyProcs | Where-Object {
+    $_.CommandLine -match "http\.server $DashboardPort" -or
+    ($_.CommandLine -match "dashboard_server\.py" -and $_.CommandLine -match "--port $DashboardPort")
+})
 if ($servers.Count -gt 0) {
     Write-Output "Dashboard server RUNNING: PID $($servers[0].ProcessId) at http://127.0.0.1:$DashboardPort/dashboard/"
 } else {
     Write-Output "Dashboard server NOT RUNNING on port $DashboardPort."
+}
+
+$listeners = @($pyProcs | Where-Object { $_.CommandLine -match "tape_signal_listener\.py" })
+if ($listeners.Count -gt 0) {
+    Write-Output "Tape signal listener RUNNING: PID $($listeners[0].ProcessId) (TradingView alerts -> macro_tape_signals.json)"
+} else {
+    Write-Output "Tape signal listener NOT RUNNING."
 }
 
 $statusPath = Join-Path $root "macro_pipeline_status.json"

@@ -463,6 +463,21 @@ def send_to_targets(alerts: list[dict[str, Any]], targets: list[str], args: argp
     return errors
 
 
+def test_email_alert(recipient: str) -> dict[str, Any]:
+    return {
+        "alert_time": now_iso(),
+        "severity": "info",
+        "alert_type": "email_test",
+        "title": "NQ Macro Catalyst",
+        "message": (
+            "Test email delivered successfully from the local dashboard. "
+            "Future pipeline alerts can use this same SMTP configuration."
+        ),
+        "release_time": "",
+        "recipient": recipient,
+    }
+
+
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Send configured notifications for new macro pipeline alerts.")
     p.add_argument("--config", default="macro_alert_notify_config.json", help="Optional notification config JSON")
@@ -497,6 +512,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--smtp-password-env", default="MACRO_ALERT_SMTP_PASSWORD")
     p.add_argument("--smtp-starttls", dest="smtp_starttls", action="store_true", default=True)
     p.add_argument("--no-smtp-starttls", dest="smtp_starttls", action="store_false")
+    p.add_argument("--test-email", action="store_true", help="Send one synthetic email immediately and exit")
+    p.add_argument("--test-recipient", default="", help="Optional recipient override for --test-email")
 
     p.add_argument("--risk-lock-output", default="macro_alert_risk_lock.json")
     p.add_argument("--risk-lock-severity", choices=["medium", "high"], default="high")
@@ -511,6 +528,23 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     targets = parse_targets(args.targets)
+    if args.test_email:
+        if args.test_recipient:
+            args.email_to = args.test_recipient
+        recipient = clean(args.email_to or os.environ.get("MACRO_ALERT_EMAIL_TO", ""))
+        test_alert = test_email_alert(recipient)
+        if args.dry_run:
+            console_notify([test_alert])
+            print("Email test dry run complete.")
+            return
+        errors = send_to_targets([test_alert], ["email"], args)
+        if errors:
+            for error in errors:
+                print(f"ERROR {error}", file=sys.stderr)
+            raise SystemExit(1)
+        print(f"Email test sent to {recipient}.")
+        return
+
     state_path = Path(args.state)
     state = load_json(state_path)
     delivered = set(state.get("delivered_fingerprints", []))

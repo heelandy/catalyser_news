@@ -1,5 +1,8 @@
 # NQ Macro Catalyst Lab
 
+Commercial web-application roadmap and completion checklist:
+[expectationAPP](./expectationAPP).
+
 A modular Python workspace for studying how U.S. macroeconomic releases affect
 Nasdaq futures (`NQ=F`) and for validating trading results. The system keeps
 each responsibility separate:
@@ -19,11 +22,16 @@ each responsibility separate:
 - `macro_pipeline_runner.py` runs the separated modules in a repeatable loop.
 - `macro_pipeline_alerts.py` detects release-state and runner-health changes.
 - `macro_alert_notify.py` sends optional notifications for newly detected alerts.
+- `macro_web_ingest.py` sends signed canonical alert payloads into the web app.
 - `macro_daily_confirmation.py` adds the temporary daily baseline confirmation.
 - `macro_regime.py` separates release-rule direction from live-market regime.
 - `macro_news_feed.py` fetches and interprets fast Yahoo JSON, Yahoo RSS, and
   optional TradingView headlines.
 - `dashboard/` displays the current signals, performance, and trust weights.
+- `web/` is the new Next.js/TypeScript foundation for the future
+  subscription application. It consumes the existing Python pipeline outputs
+  and keeps production-only database/auth/billing work separate from the local
+  dashboard.
 
 ## Folder Layout
 
@@ -144,9 +152,10 @@ pipeline runner. It is always safe to run again: it skips anything that is
 already running, and outside the 7:00-18:00 window it starts only the
 dashboard (add `-ForceRunner` to force the runner too).
 
-Do NOT run `python -m http.server` in a terminal yourself - that server dies
-the moment the terminal closes. The start script runs the same server hidden
-in the background instead.
+Do NOT run `python -m http.server` in a terminal yourself. The start script
+runs `tools/dashboard_server.py` hidden in the background. That local-only
+server serves the dashboard and the email-test API without exposing SMTP
+credentials to browser JavaScript.
 
 ### Step 6 - Open the dashboard
 
@@ -250,6 +259,9 @@ Operational notes:
   `macro_pipeline_alert_summary.json`. Open
   `http://127.0.0.1:8787/dashboard/?popupPreview=1` to preview the popup with
   the most recent alert regardless of age.
+- The dashboard `Email` button checks the local SMTP configuration and can send
+  a test alert. The SMTP app password remains in the Windows user environment;
+  it is never returned by the local API or written into dashboard files.
 - Raw `release_time` values in the CSV are UTC timestamps without a timezone
   suffix. The dashboard displays them in ET and shows UTC in the hover title.
 
@@ -740,6 +752,24 @@ Send notifications for alerts:
 python .\macro_alert_notify.py --targets console,bell --min-severity medium
 ```
 
+Send canonical Python-engine payloads to the Next.js web app:
+
+```powershell
+$env:ENGINE_INGEST_SECRET="use-the-same-32-plus-character-secret-as-web"
+$env:MARKET_CATALYST_INGEST_URL="http://127.0.0.1:3000/api/engine/alerts"
+python .\macro_web_ingest.py --signals .\macro_live_signal_current.csv --limit 5
+```
+
+Dry-run first to inspect what will be posted:
+
+```powershell
+python .\macro_web_ingest.py --signals .\macro_live_signal_current.csv --include-waiting --limit 1 --dry-run
+```
+
+The web route verifies an HMAC signature, rejects stale timestamps outside the
+five-minute replay window, and uses `idempotencyKey` plus `sourceFingerprint`
+so repeated runner cycles do not create duplicate alerts.
+
 The notifier can also read `macro_alert_notify_config.json`. The committed
 `macro_alert_notify_config.example.json` shows webhook, email, and risk-lock
 settings. The local config is ignored by Git so private webhook URLs and SMTP
@@ -748,6 +778,48 @@ writes `macro_alert_risk_lock.json` and shows a Windows desktop popup. The
 risk-lock target also scans the current signal CSV for release-rule/live-regime
 conflicts, so a `no_long_wait_for_reclaim` state remains visible even after the
 first alert has already been delivered.
+
+### Personal Email Alerts
+
+The recommended first test is a Gmail App Password. Do not use your normal
+Gmail password.
+
+1. In the Google account, enable 2-Step Verification and create a 16-character
+   App Password for this local application.
+2. From the repository root, run the secure setup prompt:
+
+```powershell
+.\tools\setup_email_alert.ps1 -Provider gmail
+```
+
+3. Enter the personal email address and the App Password when prompted. The
+   script writes non-secret SMTP settings to the ignored local file
+   `macro_alert_notify_config.json` and stores the password in the Windows user
+   environment as `MACRO_ALERT_SMTP_PASSWORD`.
+4. Restart the background dashboard so it sees the new environment value:
+
+```powershell
+.\tools\stop_live_pipeline.ps1 -IncludeDashboard
+.\tools\start_live_pipeline.ps1
+```
+
+5. Open `http://127.0.0.1:8787/dashboard/`, select `Email`, confirm the test
+   recipient, and select `Send Test`.
+
+Outlook uses the same workflow with `-Provider outlook`. For another provider,
+use `-Provider custom`; the script prompts for the SMTP host and port. A direct
+command-line test is also available after setup:
+
+```powershell
+python .\macro_alert_notify.py --targets email --test-email
+```
+
+The setup script adds `email` to the local notification targets and sets
+`min_severity` to `info`. The dashboard popup and email notifier therefore use
+the same `info`, `medium`, and `high` alert set. Because the normal start script
+launches the runner with `--notify-alerts`, every newly detected popup alert is
+automatically sent to the configured recipient; the dashboard does not need to
+remain open.
 
 Run the 24/7 loop with local notification output:
 
@@ -761,8 +833,7 @@ Optional delivery examples:
 $env:MACRO_ALERT_WEBHOOK_URL = "https://example.com/webhook"
 python .\macro_alert_notify.py --targets webhook --min-severity high
 
-$env:MACRO_ALERT_SMTP_PASSWORD = "YOUR_SMTP_PASSWORD"
-python .\macro_alert_notify.py --targets email --email-to you@example.com --email-from bot@example.com --smtp-host smtp.example.com --smtp-user bot@example.com
+python .\macro_alert_notify.py --targets email --test-email
 
 python .\macro_alert_notify.py --targets risk_lock --risk-lock-output macro_alert_risk_lock.json
 python .\macro_alert_notify.py --targets popup --min-severity medium
@@ -800,7 +871,7 @@ Serve the repository root and open the dashboard:
 
 ```powershell
 cd "<path to python nq Catalyst>"
-python -m http.server 8787 --bind 127.0.0.1
+python .\tools\dashboard_server.py --port 8787 --bind 127.0.0.1
 ```
 
 Then open:
@@ -810,7 +881,7 @@ http://127.0.0.1:8787/dashboard/
 ```
 
 For the full startup sequence from `git pull` through a background live runner,
-use [Quick Start: Repository To Live Pipeline](#quick-start-repository-to-live-pipeline).
+use [Quick Start: From GitHub To Running System](#quick-start-from-github-to-running-system).
 
 The dashboard reads:
 
@@ -829,7 +900,60 @@ Views:
 - Trust: feedback weights and trust-weight chart used by the adjusted signal
   contract.
 
-## 8. Archived Extras
+## 8. Start The Web App Foundation Locally
+
+This is the new Next.js app for the future paid subscriber product. It is not
+the live trading dashboard yet; it is the secure web-app foundation that will
+later receive signed alerts from the Python engine.
+
+From a fresh repository pull:
+
+```powershell
+cd "<path to python nq Catalyst>"
+cd .\web
+npm install
+Copy-Item .env.example .env.local
+npm run dev
+```
+
+Open:
+
+```text
+http://127.0.0.1:3000/
+```
+
+Validation commands:
+
+```powershell
+npm run check
+npm run db:validate
+npm run db:generate
+```
+
+Readiness endpoint behavior:
+
+- `http://127.0.0.1:3000/api/health` should return `ok: true`.
+- `http://127.0.0.1:3000/api/ready` returns HTTP 503 until `DATABASE_URL` is
+  configured for PostgreSQL. That is expected until the local database is set
+  up.
+
+Phase 2 database setup after PostgreSQL is available:
+
+```powershell
+.\tools\setup_local_postgres.ps1
+cd .\web
+npm run db:deploy
+npm run db:seed
+npm run db:verify
+```
+
+The seed creates the Free, Basic, Pro, and Elite plan rows. It does not store
+secrets or subscriber data. The setup script installs PostgreSQL 17 when
+missing and stores the generated application credential only in ignored
+`web/.env.local`. It reuses a working configured database; otherwise it creates
+an isolated cluster under ignored `web/.postgres-data` on port 5433.
+
+## 9. Archived Extras
 
 The `extra/` folder contains side tools and old generated artifacts that are not
 part of the current catalyst engine workflow. Examples include:
@@ -876,6 +1000,7 @@ Those files are kept for reference, not deleted.
 | `macro_pipeline_runner.py` | 24/7 orchestration layer that calls the separate modules in order. |
 | `macro_pipeline_alerts.py` | Separate local alert detector for release changes and runner health. |
 | `macro_alert_notify.py` | Optional notification sender for alert summaries/history. |
+| `macro_web_ingest.py` | Signed sender from Python signal CSVs to the Next.js ingestion API. |
 | `macro_alert_notify_config.example.json` | Template for webhook/email/risk-lock notification settings. |
 | `dashboard/index.html` | Local browser dashboard for adjusted macro signals. |
 | `dashboard/app.js` | CSV loader, filters, tables, and detail panel for the dashboard. |
@@ -1017,6 +1142,8 @@ As of the latest local run:
   and can be run manually against the adjusted signal CSV and status JSON.
 - `macro_alert_notify.py` can deliver newly detected alerts to console, bell,
   webhook, email, or a local risk-lock JSON handoff when enabled.
+- `macro_web_ingest.py` can validate and sign the current signal CSV into the
+  web app's `POST /api/engine/alerts` contract.
 - `dashboard/` serves from the workspace root and loads the adjusted signal,
   performance, and trust CSVs over HTTP.
 - The dashboard now includes probability timeline, event-family performance,
@@ -1033,19 +1160,18 @@ the system unattended.
    `tools/status_live_pipeline.ps1` manage the live runner and dashboard server.
 2. Done: `tools/setup_schedule.ps1` registers daily Task Scheduler tasks that
    start the pipeline at 7:00 AM and stop it at 6:00 PM.
-3. Partially done: the start script refuses to launch a second runner. A PID or
-   lock file inside `macro_pipeline_runner.py` would still protect manual runs.
+3. Done: both the start script and `macro_pipeline_runner.py` prevent duplicate
+   live runners; the runner owns and safely releases a PID/token lock file.
 4. Done: the dashboard shows a stale-data banner when
    `macro_pipeline_status.json` is older than the expected loop interval and a
    warning when the last cycle failed.
-5. Add log rotation for `macro_pipeline_runner.log` so long-running use does not
-   grow the log indefinitely.
-6. Add focused tests for UTC/ET handling, `--watch-releases`, and actual-value
-   detection, because release timing is the highest-risk behavior.
+5. Done: `macro_pipeline_runner.log` rotates before it grows indefinitely.
+6. Done: focused tests cover UTC/ET handling, `--watch-releases`, actual-value
+   detection, regime conflicts, locking, log rotation, and dashboard contracts.
 7. Decide which refreshed runtime CSVs should be committed and which should stay
    local-only, since live runs update dashboard signal files frequently.
-8. Configure and document real notification targets, such as webhook, email, or
-   a local risk-lock file, instead of relying only on console output.
+8. Done: webhook, email, popup, and local risk-lock targets are implemented;
+   personal SMTP setup and dashboard test-email steps are documented above.
 
 ## GitHub Upload Checklist
 

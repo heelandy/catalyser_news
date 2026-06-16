@@ -128,6 +128,129 @@ h1 {
   color: var(--muted);
 }
 
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.settings-dialog {
+  width: min(480px, calc(100% - 28px));
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  background: var(--surface);
+  box-shadow: 0 24px 70px rgba(20, 31, 27, 0.24);
+}
+
+.settings-dialog::backdrop {
+  background: rgba(14, 21, 19, 0.46);
+}
+
+.dialog-shell {
+  margin: 0;
+}
+
+.dialog-head,
+.dialog-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+}
+
+.dialog-head {
+  border-bottom: 1px solid var(--line);
+}
+
+.dialog-head h2,
+.dialog-head p {
+  margin: 0;
+}
+
+.dialog-head h2 {
+  color: var(--strong);
+  font-size: 16px;
+}
+
+.dialog-head p {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.icon-button {
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  background: var(--surface-2);
+  cursor: pointer;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.dialog-body {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+.dialog-body .field {
+  min-width: 0;
+}
+
+.email-config-grid {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 8px 12px;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+  font-size: 12px;
+}
+
+.email-config-grid dt {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.email-config-grid dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--strong);
+  overflow-wrap: anywhere;
+}
+
+.email-test-result {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.email-test-result.success {
+  border-color: #8fcfb3;
+  color: var(--bull);
+  background: var(--bull-soft);
+}
+
+.email-test-result.error {
+  border-color: #f0b8ae;
+  color: var(--bear);
+  background: var(--bear-soft);
+}
+
+.dialog-actions {
+  justify-content: flex-end;
+  border-top: 1px solid var(--line);
+}
+
 .app-shell {
   width: min(1500px, calc(100% - 28px));
   margin: 18px auto 32px;
